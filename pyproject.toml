@@ -6,7 +6,7 @@ requires = [
 
 [project]
 name = "helloworldkitty"
-description = "Automated"
+description = "Turn Terraform scripts into automated adversary emulation for the Cloud."
 readme = "README.md"
 authors = [
   { name = "Chris Lo", email = "chris@tracecat.com" },
