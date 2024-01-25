@@ -24,16 +24,16 @@ dynamic = [
 ]
 dependencies = [
   "backoff",
+  "docker",
   "openai",
   "orjson",
   "polars",
+  "polars",
+  "prowler",
   "prowler",
   "pydantic",
   "python-dotenv",
   "regex",
-  "docker",
-  "polars",
-  "prowler",
 ]
 [project.optional-dependencies]
 test = [
@@ -45,6 +45,9 @@ test = [
 path = "helloworldkitty/__init__.py"
 
 [tool.ruff]
+exclude = [
+  "tests/scenarios/*.py"
+]
 select = [
   "E",  # pycodestyle errors
   "W",  # pycodestyle warnings
