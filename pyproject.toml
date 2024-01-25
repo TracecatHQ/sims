@@ -25,6 +25,8 @@ dynamic = [
 dependencies = [
   "backoff",
   "docker",
+  "huggingface",
+  "lancedb",
   "openai",
   "orjson",
   "polars",
