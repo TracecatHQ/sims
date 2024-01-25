@@ -6,52 +6,56 @@ requires = [
 
 [project]
 name = "helloworldkitty"
-description = "Automated "
+description = "Automated"
 readme = "README.md"
 authors = [
-    { name = "Chris Lo", email = "chris@tracecat.com" },
-    { name = "Daryl Lim", email = "daryl@tracecat.com" },
+  { name = "Chris Lo", email = "chris@tracecat.com" },
+  { name = "Daryl Lim", email = "daryl@tracecat.com" },
 ]
 requires-python = ">=3.11.6"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Security",
 ]
 dynamic = [
   "version",
 ]
 dependencies = [
-    "polars",
-    "prowler"
+  "backoff",
+  "openai",
+  "orjson",
+  "polars",
+  "prowler",
+  "pydantic",
+  "python-dotenv",
+  "regex",
 ]
 [project.optional-dependencies]
 test = [
   "coverage[toml]",
-  "pytest"
+  "pytest",
 ]
 
 [tool.hatch.version]
-path = "kitty/__init__.py"
+path = "helloworldkitty/__init__.py"
 
 [tool.ruff]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # pyflakes
-    "I",  # isort
-    "C",  # flake8-comprehensions
-    "B",  # flake8-bugbear
-    "UP",  # pyupgrade
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort
+  "C",  # flake8-comprehensions
+  "B",  # flake8-bugbear
+  "UP", # pyupgrade
 ]
 ignore = [
-    "E501",  # line too long, handled by black
-    "B008",  # do not perform function calls in argument defaults
-    "C901",  # too complex
-    "W191", # indentation contains tabs
+  "E501", # line too long, handled by black
+  "B008", # do not perform function calls in argument defaults
+  "C901", # too complex
+  "W191", # indentation contains tabs
 ]
 
 [tool.coverage.run]
