@@ -31,6 +31,9 @@ dependencies = [
   "pydantic",
   "python-dotenv",
   "regex",
+  "docker",
+  "polars",
+  "prowler",
 ]
 [project.optional-dependencies]
 test = [
@@ -56,6 +59,7 @@ ignore = [
   "B008", # do not perform function calls in argument defaults
   "C901", # too complex
   "W191", # indentation contains tabs
+  "UP",  # pyupgrade
 ]
 
 [tool.coverage.run]
