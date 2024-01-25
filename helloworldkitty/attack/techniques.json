@@ -1,0 +1,128 @@
+{
+    "credential_access": {
+        "ec2:get_password_data": [
+            "ec2:GetPasswordData"
+        ],
+        "ec2:steal_instance_credentials": [
+            "ssm:SendCommand",
+            "sts:GetCallerIdentity",
+            "ec2:DescribeInstances"
+        ],
+        "secretsmanager:retrieve_secrets": [
+            "secretsmanager:ListSecrets",
+            "secretsmanager:GetSecretValue"
+        ],
+        "ssm:retrieve_securestring_parameters": [
+            "ssm:DescribeParameters",
+            "ssm:GetParameters"
+        ]
+    },
+    "defense_evasion": {
+        "cloudtrail:delete": [
+            "cloudtrail:DeleteTrail"
+        ],
+        "cloudtrail:event_selectors": [
+            "cloudtrail:PutEventSelectors"
+        ],
+        "cloudtrail:lifecycle_rule": [
+            "s3:PutBucketLifecycleConfiguration"
+        ],
+        "cloudtrail:stop": [
+            "cloudtrail:StopLogging",
+            "cloudtrail:StartLogging"
+        ],
+        "organizations:leave": [
+            "organizations:LeaveOrganization"
+        ],
+        "vpc:remove_flow_logs": [
+            "ec2:DeleteFlowLogs"
+        ]
+    },
+    "discovery": {
+        "ec2:enumerate_from_instance": [
+            "sts:GetCallerIdentity",
+            "s3:ListBuckets",
+            "iam:GetAccountSummary",
+            "iam:ListRoles",
+            "iam:ListUsers",
+            "iam:GetAccountAuthorizationDetails",
+            "ec2:DescribeSnapshots",
+            "cloudtrail:DescribeTrails",
+            "guardduty:ListDetectors"
+        ],
+        "ec2:get_user_data": [
+            "ec2:DescribeInstanceAttribute"
+        ]
+    },
+    "execution": {
+        "ec2:launch_unusual_instances": [
+            "ec2:RunInstances"
+        ],
+        "ec2:user_data": [
+            "ec2:RunInstances"
+        ]
+    },
+    "exfiltration": {
+        "ec2:security_group_open_port_22_ingress": [
+            "ec2:AuthorizeSecurityGroupIngress"
+        ],
+        "ec2:share_ami": [
+            "ec2:ModifyImageAttribute"
+        ],
+        "ec2:share_ebs_snapshot": [
+            "ec2:ModifySnapshotAttribute"
+        ],
+        "rds:share_snapshot": [
+            "rds:ModifyDBSnapshotAttribute"
+        ],
+        "s3:back_door_bucket_policy": [
+            "s3:PutBucketPolicy"
+        ]
+    },
+    "impact": {
+        "s3:ransomware_batch_deletion": [
+            "s3:ListObjectsV2",
+            "s3:DeleteObjects"
+        ],
+        "s3:ransomware_client_side_encryption": [
+            "s3:ListObjectsV2",
+            "s3:CopyObject"
+        ],
+        "s3:ransomware_individual_deletion": [
+            "s3:ListObjectsV2",
+            "s3:DeleteObject"
+        ]
+    },
+    "persistence": {
+        "iam:backdoor_role": [
+            "iam:updateAssumeRolePolicy"
+        ],
+        "iam:backdoor_user": [
+            "iam:CreateAccessKey",
+            "iam:ListAccessKeys"
+        ],
+        "iam:create_admin_user": [
+            "iam:CreateUser",
+            "iam:AttachUserPolicy",
+            "iam:CreateAccessKey"
+        ],
+        "iam:create_user_login_profile": [
+            "iam:GetLoginProfile",
+            "iam:CreateLoginProfile",
+            "sts:GetCallerIdentity"
+        ],
+        "lambda:backdoor_function": [
+            "lambda:AddPermission"
+        ],
+        "lambda:layer_extension": [
+            "lambda:UpdateFunctionConfiguration"
+        ],
+        "lambda:overwrite_code": [
+            "lambda:UpdateFunctionCode"
+        ],
+        "rolesanywhere:create_trust_anchor": [
+            "rolesanywhere:CreateTrustAnchor",
+            "rolesanywhere:CreateProfile"
+        ]
+    }
+}
