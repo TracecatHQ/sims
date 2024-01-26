@@ -25,6 +25,7 @@ dynamic = [
 dependencies = [
   "backoff",
   "connectorx",
+  "cryptography",
   "docker",
   "huggingface",
   "lancedb",
