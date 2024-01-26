@@ -7,7 +7,7 @@ import orjson
 from dotenv import find_dotenv, load_dotenv
 from openai import AsyncOpenAI, OpenAI
 
-from helloworldkitty.logging import get_logger
+from helloworldkitty.logger import get_logger
 
 load_dotenv(find_dotenv())
 
