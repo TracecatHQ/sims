@@ -2,9 +2,9 @@ import logging
 import os
 from pathlib import Path
 
-from helloworldkitty.config import TRACECAT__HOME_DIR
+from helloworldkitty.config import HWK__HOME_DIR
 
-LOG_FILE = TRACECAT__HOME_DIR / "hwk.log"
+LOG_FILE = HWK__HOME_DIR / "hwk.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 LOG_FILE.touch(exist_ok=True)
 
