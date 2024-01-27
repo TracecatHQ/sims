@@ -27,7 +27,8 @@ def create_ip_whitelist(dir_path: Path | None = None):
     rsp.raise_for_status()
     own_ip_address = ip_address(rsp.json().get("ip"))
     with open(dir_path / "whitelist.txt", "w") as f:
-        f.write(str(own_ip_address))
+        # Single host
+        f.write(str(own_ip_address) + "/32")
 
 
 def create_compromised_ssh_keys(dir_path: Path | None = None):
