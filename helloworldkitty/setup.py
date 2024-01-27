@@ -163,7 +163,7 @@ def cleanup_lab():
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
     )
 
-    logger.info("✅ Lab cleanup successful! What will you break next?")
+    logger.info("✅ Lab cleanup complete. What will you break next?")
 
 
 if __name__ == "__main__":
