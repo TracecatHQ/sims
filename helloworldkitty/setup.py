@@ -97,6 +97,9 @@ def initialize_lab(project_path: Path):
         Path to Terraform project files.
     """
 
+    logger.info("🐱 Create new lab directory")
+    HWK__LAB_DIR.mkdir(parents=True, exist_ok=True)
+
     # Create Terraform on Docker
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Create Terraform in Docker container")
@@ -106,9 +109,6 @@ def initialize_lab(project_path: Path):
     )
 
     # Copy Terraform project into labs
-    logger.info("🐱 Create new lab directory")
-    HWK__LAB_DIR.mkdir(parents=True, exist_ok=True)
-
     logger.info("🚧 Copy Terraform project into lab")
     shutil.copytree(project_path, HWK__LAB_DIR, dirs_exist_ok=True)
 
@@ -169,4 +169,5 @@ def cleanup_lab():
 if __name__ == "__main__":
     project_path = _path_to_pkg() / "helloworldkitty/attack/scenarios/codebuild"
     initialize_lab(project_path=project_path)
+    deploy_lab()
     cleanup_lab()
