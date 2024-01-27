@@ -39,6 +39,7 @@ dependencies = [
   "pydantic",
   "python-dotenv",
   "regex",
+  "typer",
 ]
 [project.optional-dependencies]
 test = [

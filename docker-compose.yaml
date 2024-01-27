@@ -1,0 +1,9 @@
+version: '3.8'
+name: "hwk-lab"
+services:
+  terraform:
+    image: hashicorp/terraform:latest  # Replace 'latest' with the specific version if needed
+    volumes:
+      - ~/.helloworldkitty/lab:/home/terraform
+    working_dir: /home/terraform
+    tty: true
