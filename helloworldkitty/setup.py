@@ -80,6 +80,14 @@ def _path_to_pkg() -> Path:
     return resources.files(helloworldkitty).parent
 
 
+def run_terraform(cmds: list[str]):
+    subprocess.run(
+        ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
+        cwd=_path_to_pkg(),
+        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+    )
+
+
 def initialize_lab(project_path: Path):
     """Create lab directory and spin-up Terraform in Docker.
 
@@ -89,30 +97,23 @@ def initialize_lab(project_path: Path):
         Path to Terraform project files.
     """
 
-    if os.path.exists(HWK__LAB_DIR):
-        raise ValueError(
-            "Unable to create new lab as lab already exists. Try running `hwk cleanup`."
-        )
-
     # Create Terraform on Docker
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Create Terraform in Docker container")
     subprocess.run(
-        ["docker", "compose", "-f", _path_to_pkg() / "docker-compose.yaml", "up", "-d"]
+        ["docker", "compose", "-f", _path_to_pkg() / "docker-compose.yaml", "up", "-d"],
+        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
     )
 
     # Copy Terraform project into labs
     logger.info("🐱 Create new lab directory")
-    os.makedirs(HWK__LAB_DIR, exist_ok=True)
+    HWK__LAB_DIR.mkdir(parents=True, exist_ok=True)
 
     logger.info("🚧 Copy Terraform project into lab")
-    shutil.copytree(project_path, HWK__LAB_DIR)
+    shutil.copytree(project_path, HWK__LAB_DIR, dirs_exist_ok=True)
 
     logger.info("🚧 Initialize Terraform project")
-    subprocess.run(
-        ["docker", "compose", "run", "--rm", "terraform", "init"],
-        cwd=_path_to_pkg(),
-    )
+    run_terraform(["init"])
 
 
 def deploy_lab() -> Path:
@@ -122,18 +123,13 @@ def deploy_lab() -> Path:
     """
     # Terraform plan (safety)
     # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Create Terraform in Docker container")
-    tf_plan_cmd = ["docker", "compose", "run", "--rm", "terraform", "plan"]
-    subprocess.run(
-        tf_plan_cmd,
-        cwd=_path_to_pkg(),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    logger.info("🚧 Run Terraform plan")
+    run_terraform(["plan"])
 
     # Terraform deploy
     # TODO: Capture stdout and deal with errors
+    logger.info("🚧 Run Terraform apply")
+    run_terraform(["apply"])
 
 
 class FailedTerraformDestroy(Exception):
@@ -148,29 +144,9 @@ def cleanup_lab():
     FailedTerraformDestory if `terraform destroy` was unsuccessful.
     Container is not stopped in this case.
     """
-
-    def _check_successful_destroy(stdout) -> bool:
-        stdout_lines = stdout.strip()
-        return "Destroy complete!" in stdout_lines
-
     # Terraform destroy
     logger.info("🧹 Destroy lab infrastructure")
-    tf_destroy_cmd = ["docker", "compose", "run", "--rm", "terraform", "destroy"]
-    tf_destroy_output = subprocess.run(
-        tf_destroy_cmd,
-        cwd=_path_to_pkg(),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    # Check if successfully destroyed
-    if not _check_successful_destroy(tf_destroy_output.stdout):
-        raise FailedTerraformDestroy(tf_destroy_output.stderr)
-
-    # Delete docker project
-    logger.info("🧹 Spin down Terraform in Docker")
-    subprocess.run(["docker", "compose", "down"], cwd=_path_to_pkg())
+    run_terraform(["destroy"])
 
     # Delete labs directory
     logger.info("🧹 Delete lab directory")
@@ -178,10 +154,19 @@ def cleanup_lab():
         shutil.rmtree(HWK__LAB_DIR)
     except FileNotFoundError:
         logger.info("❗ No lab directory found")
+
+    # Delete docker containers
+    logger.info("🧹 Spin down Terraform in Docker")
+    subprocess.run(
+        ["docker", "compose", "down"],
+        cwd=_path_to_pkg(),
+        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+    )
+
     logger.info("✅ Lab cleanup successful! What will you break next?")
 
 
 if __name__ == "__main__":
     project_path = _path_to_pkg() / "helloworldkitty/attack/scenarios/codebuild"
-    # initialize_lab(project_path=project_path)
+    initialize_lab(project_path=project_path)
     cleanup_lab()

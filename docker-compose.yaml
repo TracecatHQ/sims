@@ -3,6 +3,7 @@ name: "hwk-lab"
 services:
   terraform:
     image: hashicorp/terraform:latest  # Replace 'latest' with the specific version if needed
+    user: "${UID}:${GID}"
     volumes:
       - ~/.helloworldkitty/lab:/home/terraform
     working_dir: /home/terraform
