@@ -1,6 +1,7 @@
 import typer
 from typing_extensions import Annotated
 
+from helloworldkitty.attack.ddos import ddos as signal_ddos
 from helloworldkitty.setup import cleanup_lab, deploy_lab, initialize_lab
 
 app = typer.Typer()
@@ -18,6 +19,11 @@ def warmup(
 @app.command()
 def detonate():
     pass
+
+
+@app.command()
+def ddos(n_attacks: int = 10, delay: int = 1):
+    signal_ddos(n_attacks=n_attacks, delay=delay)
 
 
 @app.command()
