@@ -61,13 +61,23 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
             [
                 # User
                 pl.col("userIdentity").struct.field("arn"),
-                pl.col("userIdentity").struct.field("accessKeyId"),
+                pl.col("userIdentity")
+                .struct.field("accessKeyId")
+                .alias("access_key_id"),
                 # Timestamp
                 pl.col("timestamp"),
+                # Severity
+                pl.col("status").alias("severity"),
                 # Rule ID
-                pl.col("workflow").struct.field("rule").struct.field("defaultRuleId"),
+                pl.col("workflow")
+                .struct.field("rule")
+                .struct.field("defaultRuleId")
+                .alias("rule_id"),
                 # Rule name
-                pl.col("workflow").struct.field("rule").struct.field("name"),
+                pl.col("workflow")
+                .struct.field("rule")
+                .struct.field("name")
+                .alias("rule_name"),
             ]
         )
         .write_parquet(path)
