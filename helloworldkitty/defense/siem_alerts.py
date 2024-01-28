@@ -16,11 +16,6 @@ from helloworldkitty.config import HWK__ALERTS_DIR
 HWK__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def label_alerts(alerts: str, malicious_ids: list[str]):
-    """Label alerts as malicious or not based on an identifier."""
-    return alerts.with_columns(is_bad=pl.col("accessKeyId").is_in(malicious_ids))
-
-
 def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Path:
     """Get alerts from Datadog.
 
@@ -56,6 +51,7 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         pl.from_dicts(events)
         .unnest("attributes")
         .unnest("attributes")
+        .explode("samples")
         # We use access key ID as the label for good / bad event
         .select(
             [
@@ -65,10 +61,21 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
                 .struct.field("accessKeyId")
                 .alias("access_key_id"),
                 pl.col("userIdentity"),
-                # Timestamp
-                pl.col("timestamp"),
+                # Alert timestamp
+                pl.col("timestamp").alias("alerted_at"),
                 # Severity
                 pl.col("status").alias("severity"),
+                # Event
+                pl.col("samples")
+                .struct.field("content")
+                .struct.field("custom")
+                .struct.field("eventTime")
+                .alias("logged_at"),
+                pl.col("samples")
+                .struct.field("content")
+                .struct.field("custom")
+                .struct.field("eventName")
+                .alias("event_name"),
                 # Rule ID
                 pl.col("workflow")
                 .struct.field("rule")
@@ -84,3 +91,6 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         .write_parquet(path)
     )
     return path
+
+
+get_datadog_alerts(datetime(2024, 1, 25), datetime(2024, 1, 26))
