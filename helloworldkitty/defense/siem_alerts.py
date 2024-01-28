@@ -60,10 +60,11 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         .select(
             [
                 # User
-                pl.col("userIdentity").struct.field("arn"),
+                pl.col("userIdentity").struct.field("arn").alias("arn"),
                 pl.col("userIdentity")
                 .struct.field("accessKeyId")
                 .alias("access_key_id"),
+                pl.col("userIdentity"),
                 # Timestamp
                 pl.col("timestamp"),
                 # Severity
