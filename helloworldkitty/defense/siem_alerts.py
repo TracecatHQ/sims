@@ -16,17 +16,9 @@ from helloworldkitty.config import HWK__ALERTS_DIR
 HWK__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-LOG_SOURCE_TO_IDENTITY_COL = {
-    "aws_cloudtrail": "accessKeyId",
-}
-
-
-def label_alerts(
-    alerts: str, malicious_ids: list[str], log_source: str = "aws_cloudtrail"
-):
+def label_alerts(alerts: str, malicious_ids: list[str]):
     """Label alerts as malicious or not based on an identifier."""
-    id_col = LOG_SOURCE_TO_IDENTITY_COL[log_source]
-    return alerts.with_columns(is_bad=pl.col(id_col).is_in(malicious_ids))
+    return alerts.with_columns(is_bad=pl.col("accessKeyId").is_in(malicious_ids))
 
 
 def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Path:
