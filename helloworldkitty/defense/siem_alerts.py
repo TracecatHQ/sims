@@ -69,13 +69,11 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
                 pl.col("samples")
                 .struct.field("content")
                 .struct.field("custom")
-                .struct.field("eventTime")
-                .alias("logged_at"),
+                .struct.field("eventTime"),
                 pl.col("samples")
                 .struct.field("content")
                 .struct.field("custom")
-                .struct.field("eventName")
-                .alias("event_name"),
+                .struct.field("eventName"),
                 # Rule ID
                 pl.col("workflow")
                 .struct.field("rule")
