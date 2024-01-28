@@ -91,6 +91,3 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         .write_parquet(path)
     )
     return path
-
-
-get_datadog_alerts(datetime(2024, 1, 25), datetime(2024, 1, 26))
