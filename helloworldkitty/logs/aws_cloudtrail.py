@@ -30,7 +30,7 @@ AWS_CLOUDTRAIL__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 SELECTED_FIELDS = [
     # Normalized fields
     pl.col("userIdentity").str.json_path_match("$.arn").alias("arn"),
-    pl.col("userIdentity").str.json_path_match("$.accessKeyId").alias("access_key_id"),
+    pl.col("userIdentity").str.json_path_match("$.accessKeyId").alias("accessKeyId"),
     # Original fields
     "userIdentity",
     "userAgent",
@@ -142,7 +142,7 @@ def _load_cloudtrail_ndjson(
         .select(SELECTED_FIELDS)
         # Defensive to avoid concats with mismatched struct column schemas
         .select(pl.all().cast(pl.Utf8))
-        .filter(pl.col("access_key_id").is_in(malicious_ids + normal_ids))
+        .filter(pl.col("accessKeyId").is_in(malicious_ids + normal_ids))
         .collect(streaming=True)
         .write_parquet(logs_file_path)
     )

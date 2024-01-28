@@ -57,9 +57,7 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
             [
                 # User
                 pl.col("userIdentity").struct.field("arn").alias("arn"),
-                pl.col("userIdentity")
-                .struct.field("accessKeyId")
-                .alias("access_key_id"),
+                pl.col("userIdentity").struct.field("accessKeyId").alias("accessKeyId"),
                 pl.col("userIdentity"),
                 # Alert timestamp
                 pl.col("timestamp").alias("alerted_at"),
