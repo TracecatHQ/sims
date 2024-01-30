@@ -230,8 +230,8 @@ def run_lab(
 
     Lab results contain th
     """
-    _retry = retry(stop=stop_after_attempt(task_retries))
     task_retries = task_retries or 3
+    _retry = retry(stop=stop_after_attempt(task_retries))
     task_queue = [
         (initialize_lab, {"scenario_id": scenario_id}),
         (detonate_lab, {"timeout": timeout, "delayed_seconds": delayed_seconds, "max_tasks": max_tasks, "max_actions": max_actions}),
