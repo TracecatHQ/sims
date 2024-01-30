@@ -131,13 +131,13 @@ def root():
 # Core API
 
 
-@app.get("lab", response_model=LabInformation)
+@app.get("/lab", response_model=LabInformation)
 def get_lab():
     """Get lab information."""
     check_lab()
 
 
-@app.post("lab")
+@app.post("/lab")
 async def create_lab(
     scenario_id: str,
     background_tasks: BackgroundTasks,
@@ -174,7 +174,7 @@ async def create_lab(
     return {"message": "Lab created"}
 
 
-@app.delete("lab")
+@app.delete("/lab")
 def delete_lab():
     """Destroy live infrastructure and stop Terraform Docker container.
 
