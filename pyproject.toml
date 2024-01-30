@@ -25,7 +25,6 @@ dynamic = [
 dependencies = [
   "backoff",
   "connectorx",
-  "connectorx",
   "cryptography",
   "docker",
   "fastapi",
@@ -34,7 +33,6 @@ dependencies = [
   "openai",
   "orjson",
   "polars",
-  "prowler",
   "prowler",
   "pyarrow",
   "pydantic==2.5.3",
@@ -56,9 +54,7 @@ test = [
 path = "tracecat/__init__.py"
 
 [tool.ruff]
-exclude = [
-  "tests/scenarios/*.py"
-]
+exclude = ["tests/scenarios/*.py"]
 select = [
   "E",  # pycodestyle errors
   "W",  # pycodestyle warnings
@@ -73,7 +69,7 @@ ignore = [
   "B008", # do not perform function calls in argument defaults
   "C901", # too complex
   "W191", # indentation contains tabs
-  "UP",  # pyupgrade
+  "UP",   # pyupgrade
 ]
 
 [tool.coverage.run]
