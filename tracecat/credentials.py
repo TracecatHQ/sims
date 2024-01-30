@@ -3,7 +3,7 @@ from tracecat.config import TRACECAT__LAB_DIR
 
 
 def load_lab_credentials(is_compromised: bool = False):
-    with open(TRACECAT__LAB_DIR / "credentials.json") as f:
+    with open(TRACECAT__LAB_DIR / "terraform/credentials.json") as f:
         key_type = "compromised" if is_compromised else "normal"
         try:
             creds = json.load(f)
