@@ -2,8 +2,15 @@ import asyncio
 from typing import Callable
 
 
-async def delayed_detonate(delay_seconds: int, detonate: Callable):
-    """Detonate attack after N seconds.
-    """
-    await asyncio.sleep(delay_seconds)
-    await asyncio.to_thread(detonate())
+class DelayedDetonator:
+
+    def __init__(self, delay_seconds: int, detonate: Callable, **kwargs):
+        self.delay_seconds = delay_seconds
+        self._detonate = detonate
+        self._detonate_kwargs = kwargs
+
+    async def run(self):
+        """Detonate attack after `delay_seconds`.
+        """
+        await asyncio.sleep(self.delay_seconds)
+        await asyncio.to_thread(self._detonate(**self._detonate_kwargs))
