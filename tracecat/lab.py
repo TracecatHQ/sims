@@ -2,7 +2,6 @@ import asyncio
 import os
 import shutil
 import subprocess
-import time
 from contextlib import contextmanager
 from tenacity import retry, stop_after_attempt
 from datetime import datetime, timedelta
@@ -198,12 +197,12 @@ def evaluate_lab(
 def track_time():
     class Timer:
         def __init__(self):
-            self.start_time = time.time()
+            self.start_time = datetime.now()
             self.end_time = None
             self.elapsed = None
 
         def stop(self):
-            self.end_time = time.time()
+            self.end_time = datetime.now()
             self.elapsed = self.end_time - self.start_time
 
     timer = Timer()
