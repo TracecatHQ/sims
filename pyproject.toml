@@ -25,21 +25,26 @@ dynamic = [
 dependencies = [
   "backoff",
   "connectorx",
+  "connectorx",
   "cryptography",
   "docker",
+  "fastapi",
   "huggingface",
   "lancedb",
   "openai",
   "orjson",
   "polars",
-  "polars",
   "prowler",
   "prowler",
   "pyarrow",
-  "pydantic",
+  "pydantic==2.5.3",
   "python-dotenv",
+  "python-multipart",
   "regex",
+  "sqlmodel",
+  "sse_starlette",
   "typer",
+  "uvicorn",
 ]
 [project.optional-dependencies]
 test = [
