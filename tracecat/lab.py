@@ -1,5 +1,6 @@
 import os
 import shutil
+import asyncio
 from datetime import datetime
 
 from tracecat.attack.ddos import ddos
@@ -14,11 +15,11 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_triaged_cloudtrail_logs,
 )
 import subprocess
-from importlib import resources
 from pathlib import Path
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.logger import standard_logger
+from tracecat.scenarios import SCENARIO_ID_TO_RUN
 
 from tracecat.setup import create_ip_whitelist, create_compromised_ssh_keys
 
@@ -94,6 +95,29 @@ def warmup_lab(scenario_id: str):
 
 def ddos_lab(n_attacks: int = 10, delay: int = 1):
     ddos(n_attacks=n_attacks, delay=delay)
+
+
+async def detonate_lab(
+    scenario_id: str,
+    timeout: int | None = None,
+    delayed_seconds: int | None = None,
+    max_tasks: int | None = None,
+    max_actions: int | None = None
+):
+    """Asynchronously run organization to simuluate normal behavior and detonate attack.
+    """
+    timeout = timeout or 300
+    delayed_seconds = delayed_seconds or 60
+
+    try:
+        run = SCENARIO_ID_TO_RUN[scenario_id]
+    except KeyError as err:
+        raise KeyError("Scenario ID not found: %s", scenario_id) from err
+
+    try:
+        await asyncio.wait_for(run(delay_seconds=delayed_seconds, max_tasks=max_tasks, max_actions=max_actions), timeout=timeout)
+    except asyncio.TimeoutError:
+        logger.info("✅ Simulation finished after %s seconds", timeout)
 
 
 def diagnose_lab(
