@@ -4,7 +4,7 @@ import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional
+from typing import Annotated, Any, Optional
 
 from dotenv import find_dotenv, load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from tracecat.config import TRACECAT__API_DIR
+from tracecat.lab import clean_up_lab, initialize_lab, deploy_lab, check_lab, LabInformation
 from tracecat.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
@@ -103,23 +104,51 @@ def safe_json_load(path: Path) -> dict:
         return json.load(f)
 
 
-#################
-### ENDPOINTS ###
-#################
-
-
 @app.get("/")
 def root():
     return {"status": "ok"}
 
+
+# Core API
+
+
+@app.get("lab", response_model=LabInformation)
+def get_lab():
+    """Get lab information."""
+    check_lab()
+
+
+@app.post("lab")
+async def create_lab(scenario_id: str, task_retries: int = 3):
+    """Warm-up lab infrastructure and detonate attacks.
+    
+    Note: this triggers a background task.
+    """
+    initialize_lab(scenario_id=scenario_id)
+    deploy_lab()
+
+
+@app.delete("lab")
+def delete_lab():
+    """Destroy live infrastructure and stop Terraform Docker container.
+
+    Raises
+    ------
+    FailedTerraformDestory if `terraform destroy` was unsuccessful.
+    Container is not stopped in this case.
+    """
+    clean_up_lab()
+
+
+# Live Agent Feeds
 
 queues: dict[str, asyncio.Queue] = {}
 for q in ["stats", "activity"]:
     queues[q] = asyncio.Queue()
 
 
-@app.get("/activity-stream", response_class=EventSourceResponse)
-async def stream_logs():
+@app.get("/feed/activity", response_class=EventSourceResponse)
+async def stream_activity():
     async def log_stream():
         while True:
             item = await queues["activity"].get()
@@ -145,15 +174,15 @@ class StatsFeedUpdate(BaseModel):
     data: Optional[dict[str, Any]] = None
 
 
-# Polling stats
-def validate_stat_id(id: str):
+# Polling statistics
+def validate_statistics_id(id: str):
     if not len(id) == 9 or not id.startswith("STAT-"):
         raise HTTPException(status_code=400, detail="Invalid stat ID")
     return id
 
 
-@app.get("/stats-feed/{id}")
-async def get_stats(id: Annotated[str, Depends(validate_stat_id)]):
+@app.get("/feed/statistics/{id}")
+async def stream_statistics(id: Annotated[str, Depends(validate_statistics_id)]):
     stats_path = TRACECAT__API_DIR / "stats.json"
     if id == "STAT-0005":
         data = safe_json_load(TRACECAT__API_DIR / "api_calls.json")
@@ -183,15 +212,15 @@ async def get_stats(id: Annotated[str, Depends(validate_stat_id)]):
     raise HTTPException(status_code=404, detail="Stat ID not found")
 
 
-def validate_graph_id(id: str):
+def validate_events_id(id: str):
     if not len(id) == 10 or not id.startswith("GRAPH-"):
         raise HTTPException(status_code=400, detail="Invalid stat ID")
     return id
 
 
-@app.get("/graph-feed/{id}")
-async def get_graph_feed(id: Annotated[str, Depends(validate_graph_id)]):
-    """Returns a graph feed update."""
+@app.get("/feed/events/{id}")
+async def stream_events_distribution(id: Annotated[str, Depends(validate_events_id)]):
+    """Returns events distribution feed."""
     path = TRACECAT__API_DIR / "api_calls.json"
     calls = safe_json_load(path)
     return calls

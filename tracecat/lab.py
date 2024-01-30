@@ -16,6 +16,7 @@ from tracecat.ingestion.aws_cloudtrail import (
 )
 import subprocess
 from pathlib import Path
+from enum import StrEnum
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.logger import standard_logger
@@ -40,7 +41,29 @@ def _scenario_to_infra_path(scenario_id: str) -> Path:
     return path
 
 
-def _initialize_lab(scenario_id: str):
+class LabStatus(StrEnum):
+    cold = "cold"  # No lab
+    warm = "warm"  # Lab with infrastructure
+    running = "running"  # Ongoing simulation
+    complete = "complete"  # Simutation complete
+
+
+class LabInformation(BaseModel):
+    status: LabStatus
+    results: dict | None
+
+
+def check_lab():
+    # Cold: Missing or empty directory
+    # Warm:
+    # 1. Non-empty directory
+    # 2. `terraform plan` no changes
+    # 3. But no logs
+    # Running 
+    pass
+
+
+def initialize_lab(scenario_id: str):
     """Create lab directory and spin-up Terraform in Docker.
 
     Parameters
@@ -71,7 +94,7 @@ def _initialize_lab(scenario_id: str):
     _run_terraform(["init"])
 
 
-def _deploy_lab() -> Path:
+def deploy_lab() -> Path:
     """Deploy lab infrastructure ready for attacks.
 
     Assumes lab project files already configured and Terraform in Docker is available.
@@ -85,12 +108,6 @@ def _deploy_lab() -> Path:
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform apply")
     _run_terraform(["apply"])
-
-
-def warmup_lab(scenario_id: str):
-    """Create lab ready for attacks."""
-    _initialize_lab(scenario_id=scenario_id)
-    _deploy_lab()
 
 
 def ddos_lab(n_attacks: int = 10, delay: int = 1):
@@ -162,7 +179,7 @@ class FailedTerraformDestroy(Exception):
     pass
 
 
-def cleanup_lab():
+def clean_up_lab():
     """Destroy live infrastructure and stop Terraform Docker container.
 
     Raises
