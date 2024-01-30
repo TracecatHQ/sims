@@ -13,7 +13,7 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from tracecat.config import TRACECAT__API_HOME_DIR, TRACECAT__HOME_DIR
+from tracecat.config import TRACECAT__API_DIR
 from tracecat.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
@@ -79,7 +79,7 @@ JobStatus = Literal["success", "error"]
 
 
 async def tail_file_handler():
-    log_file = TRACECAT__HOME_DIR / "logs/test.log"
+    log_file = TRACECAT__API_DIR / "logs/test.log"
 
     async for line in tail_file(log_file):
         line = line.strip()
@@ -94,8 +94,8 @@ bad_usernames = {"root", "admin", "test", "user"}
 
 
 async def update_stats_handler():
-    api_call_stats_file = TRACECAT__API_HOME_DIR / "api_calls.json"
-    action_stats_file = TRACECAT__API_HOME_DIR / "action_stats.json"
+    api_call_stats_file = TRACECAT__API_DIR / "api_calls.json"
+    action_stats_file = TRACECAT__API_DIR / "action_stats.json"
 
     api_call_stats_file.touch(exist_ok=True)
     action_stats_file.touch(exist_ok=True)
@@ -162,9 +162,9 @@ def validate_stat_id(id: str):
 
 @app.get("/stats-feed/{id}")
 async def get_stats(id: Annotated[str, Depends(validate_stat_id)]):
-    stats_path = TRACECAT__API_HOME_DIR / "stats.json"
+    stats_path = TRACECAT__API_DIR / "stats.json"
     if id == "STAT-0005":
-        data = safe_json_load(TRACECAT__API_HOME_DIR / "api_calls.json")
+        data = safe_json_load(TRACECAT__API_DIR / "api_calls.json")
 
         return {
             "id": "STAT-0005",
@@ -173,7 +173,7 @@ async def get_stats(id: Annotated[str, Depends(validate_stat_id)]):
             "description": "",
         }
     elif id == "STAT-0006":
-        data = safe_json_load(TRACECAT__API_HOME_DIR / "action_stats.json")
+        data = safe_json_load(TRACECAT__API_DIR / "action_stats.json")
 
         denom = sum(data.values())
         value = 0 if denom == 0 else data.get("bad_api_calls_count", 0) / denom * 100
@@ -200,6 +200,6 @@ def validate_graph_id(id: str):
 @app.get("/graph-feed/{id}")
 async def get_graph_feed(id: Annotated[str, Depends(validate_graph_id)]):
     """Returns a graph feed update."""
-    path = TRACECAT__API_HOME_DIR / "api_calls.json"
+    path = TRACECAT__API_DIR / "api_calls.json"
     calls = safe_json_load(path)
     return calls
