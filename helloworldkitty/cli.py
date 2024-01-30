@@ -6,7 +6,7 @@ import typer
 from typing_extensions import Annotated
 
 from helloworldkitty.attack.ddos import ddos as signal_ddos
-from helloworldkitty.config import HWK__TRIAGE_DIR
+from helloworldkitty.config import TRACECAT__TRIAGE_DIR
 from helloworldkitty.defense.siem_alerts import get_datadog_alerts
 from helloworldkitty.evaluation import (
     compute_confusion_matrix,
@@ -95,7 +95,7 @@ def logs():
         print("Logs deletion aborted")
         raise typer.Abort()
     print("🧹 Run logs deletion")
-    shutil.rmtree(HWK__TRIAGE_DIR)
+    shutil.rmtree(TRACECAT__TRIAGE_DIR)
 
 
 if __name__ == "__main__":

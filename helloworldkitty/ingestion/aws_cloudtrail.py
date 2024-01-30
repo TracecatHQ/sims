@@ -13,17 +13,17 @@ import polars as pl
 from tqdm.contrib.concurrent import thread_map
 
 from helloworldkitty.config import (
-    HWK__LOGS_DIR,
-    HWK__TRIAGE_DIR,
     LOGS_FILE_TIMESTAMP_FORMAT,
+    TRACECAT__LOGS_DIR,
+    TRACECAT__TRIAGE_DIR,
 )
 from helloworldkitty.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 
 
-AWS_CLOUDTRAIL__TRIAGE_DIR = HWK__TRIAGE_DIR / "aws_cloudtrail"
-AWS_CLOUDTRAIL__LOGS_DIR = HWK__LOGS_DIR / "aws_cloudtrail"
+AWS_CLOUDTRAIL__TRIAGE_DIR = TRACECAT__TRIAGE_DIR / "aws_cloudtrail"
+AWS_CLOUDTRAIL__LOGS_DIR = TRACECAT__LOGS_DIR / "aws_cloudtrail"
 AWS_CLOUDTRAIL__TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 

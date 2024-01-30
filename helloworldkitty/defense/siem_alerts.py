@@ -11,9 +11,9 @@ import httpx
 import orjson
 import polars as pl
 
-from helloworldkitty.config import HWK__ALERTS_DIR
+from helloworldkitty.config import TRACECAT__ALERTS_DIR
 
-HWK__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
+TRACECAT__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Path:
@@ -46,7 +46,7 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         rsp.raise_for_status()
 
     events = rsp.json()["data"]
-    path = HWK__ALERTS_DIR / "datadog.parquet"
+    path = TRACECAT__ALERTS_DIR / "datadog.parquet"
     (
         pl.from_dicts(events)
         .unnest("attributes")

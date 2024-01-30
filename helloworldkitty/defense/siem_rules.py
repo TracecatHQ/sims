@@ -4,9 +4,9 @@ from pathlib import Path
 import httpx
 import polars as pl
 
-from helloworldkitty.config import HWK__RULES_DIR
+from helloworldkitty.config import TRACECAT__RULES_DIR
 
-HWK__RULES_DIR.mkdir(parents=True, exist_ok=True)
+TRACECAT__RULES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_datadog_rules(max_pages: int = 15, page_size: int = 100) -> Path:
@@ -37,7 +37,7 @@ def get_datadog_rules(max_pages: int = 15, page_size: int = 100) -> Path:
         if len(listed_rules) < page_size:
             break
 
-    path = HWK__RULES_DIR / "datadog.parquet"
+    path = TRACECAT__RULES_DIR / "datadog.parquet"
     tagged_rules = (
         pl.LazyFrame(rules).unique("id").filter(pl.col("type") == "log_detection")
     )

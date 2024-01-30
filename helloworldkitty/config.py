@@ -2,14 +2,16 @@ import os
 from pathlib import Path
 
 LOGS_FILE_TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
-HWK__HOME_DIR = (
-    Path(os.environ.get("HWK__HOME_DIR", "~/.helloworldkitty")).expanduser().resolve()
+TRACECAT__HOME_DIR = (
+    Path(os.environ.get("TRACECAT__HOME_DIR", "~/.helloworldkitty"))
+    .expanduser()
+    .resolve()
 )
-HWK__LAB_DIR = HWK__HOME_DIR / "lab"
-HWK__API_DIR = HWK__HOME_DIR / "api"
-HWK__RULES_DIR = HWK__HOME_DIR / "rules"
-HWK__ALERTS_DIR = HWK__HOME_DIR / "alerts"
-HWK__TRIAGE_DIR = HWK__HOME_DIR / "triage"
-HWK__LOGS_DIR = HWK__HOME_DIR / "logs"  # Nice clean normalized logs
-HWK__DOCKER_COMPOSE_NAME = "hwk-lab"
-HWK__DOCKER_WORKDIR = "/home/terraform/lab"
+TRACECAT__LAB_DIR = TRACECAT__HOME_DIR / "lab"
+TRACECAT__API_DIR = TRACECAT__HOME_DIR / "api"
+TRACECAT__RULES_DIR = TRACECAT__HOME_DIR / "rules"
+TRACECAT__ALERTS_DIR = TRACECAT__HOME_DIR / "alerts"
+TRACECAT__TRIAGE_DIR = TRACECAT__HOME_DIR / "triage"
+TRACECAT__LOGS_DIR = TRACECAT__HOME_DIR / "logs"  # Nice clean normalized logs
+TRACECAT__DOCKER_COMPOSE_NAME = "hwk-lab"
+TRACECAT__DOCKER_WORKDIR = "/home/terraform/lab"

@@ -13,7 +13,7 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from helloworldkitty.config import HWK__HOME_DIR, TRACECAT__API_HOME_DIR
+from helloworldkitty.config import TRACECAT__API_HOME_DIR, TRACECAT__HOME_DIR
 from helloworldkitty.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
@@ -79,7 +79,7 @@ JobStatus = Literal["success", "error"]
 
 
 async def tail_file_handler():
-    log_file = HWK__HOME_DIR / "logs/test.log"
+    log_file = TRACECAT__HOME_DIR / "logs/test.log"
 
     async for line in tail_file(log_file):
         line = line.strip()

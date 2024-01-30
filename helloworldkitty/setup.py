@@ -10,7 +10,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from helloworldkitty.config import HWK__LAB_DIR
+from helloworldkitty.config import TRACECAT__LAB_DIR
 from helloworldkitty.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
@@ -22,7 +22,7 @@ def create_ip_whitelist(dir_path: Path | None = None):
     The whitelist is stored in ~/.helloworldkitty.
     """
     logger.info("🚧 Add own IP to whitelist")
-    dir_path = dir_path or HWK__LAB_DIR
+    dir_path = dir_path or TRACECAT__LAB_DIR
     rsp = requests.get("https://ifconfig.co/json")
     rsp.raise_for_status()
     own_ip_address = ip_address(rsp.json().get("ip"))
@@ -38,7 +38,7 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
     that are deployed for the labs. The compromised SSH keys are
     stored in ~/.helloworldkitty.
     """
-    dir_path = dir_path or HWK__LAB_DIR
+    dir_path = dir_path or TRACECAT__LAB_DIR
 
     logger.info("🚧 Create temporary compromised SSH keys for lab")
     # Generate a private key
@@ -96,7 +96,7 @@ def initialize_lab(project_path: Path):
     """
 
     logger.info("🐱 Create new lab directory")
-    HWK__LAB_DIR.mkdir(parents=True, exist_ok=True)
+    TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 
     # Shared configs
     create_ip_whitelist()
@@ -112,7 +112,7 @@ def initialize_lab(project_path: Path):
 
     # Copy Terraform project into labs
     logger.info("🚧 Copy Terraform project into lab")
-    shutil.copytree(project_path, HWK__LAB_DIR, dirs_exist_ok=True)
+    shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
 
     logger.info("🚧 Initialize Terraform project")
     run_terraform(["init"])
@@ -153,7 +153,7 @@ def cleanup_lab():
     # Delete labs directory
     logger.info("🧹 Delete lab directory")
     try:
-        shutil.rmtree(HWK__LAB_DIR)
+        shutil.rmtree(TRACECAT__LAB_DIR)
     except FileNotFoundError:
         logger.info("❗ No lab directory found")
 
