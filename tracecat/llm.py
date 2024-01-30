@@ -6,6 +6,7 @@ import backoff
 import orjson
 from dotenv import find_dotenv, load_dotenv
 from openai import AsyncOpenAI, OpenAI
+
 from tracecat.logger import standard_logger
 
 load_dotenv(find_dotenv())

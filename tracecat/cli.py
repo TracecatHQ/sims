@@ -3,6 +3,8 @@ import shutil
 from datetime import datetime
 
 import typer
+from typing_extensions import Annotated
+
 from tracecat.attack.ddos import ddos as signal_ddos
 from tracecat.config import TRACECAT__TRIAGE_DIR
 from tracecat.defense.siem_alerts import get_datadog_alerts
@@ -15,7 +17,6 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_triaged_cloudtrail_logs,
 )
 from tracecat.setup import cleanup_lab, deploy_lab, initialize_lab
-from typing_extensions import Annotated
 
 app = typer.Typer()
 cleanup_app = typer.Typer(help="Cleanup lab, logs, and resources.")
