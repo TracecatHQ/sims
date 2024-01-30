@@ -23,7 +23,7 @@ from tracecat.ingestion.aws_cloudtrail import (
 from tracecat.logger import standard_logger
 from tracecat.scenarios import SCENARIO_ID_TO_RUN
 from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
-from tracecat.credentials import load_lab_credentials
+from tracecat.credentials import get_normal_ids, get_malicious_ids
 
 
 logger = standard_logger(__name__, level="INFO")
@@ -158,14 +158,8 @@ def evaluate_lab(
     normal_ids: list[str] | None = None,
     triage: bool = False,
 ):
-    normal_ids = [
-        creds["aws_access_key_id"] for creds in
-        load_lab_credentials(is_compromised=False).values()
-    ]
-    malicious_ids = [
-        creds["aws_access_key_id"] for creds in
-        load_lab_credentials(is_compromised=True).values()
-    ]
+    normal_ids = get_normal_ids()
+    malicious_ids = get_malicious_ids()
     if triage:
         logs_source = load_triaged_cloudtrail_logs(
             malicious_ids=malicious_ids,
