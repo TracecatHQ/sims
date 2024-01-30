@@ -1,6 +1,6 @@
 from ipaddress import ip_address
 from pathlib import Path
-import io
+import os
 
 import requests
 from cryptography.hazmat.backends import default_backend
@@ -37,6 +37,11 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
     stored in ~/.tracecat.
     """
     dir_path = dir_path or TRACECAT__LAB_DIR
+
+    # Skip if SSH in lab already exists
+    if os.path.exists(TRACECAT__LAB_DIR / "cloudgoat"):
+        logger.info("🛎️ Found existing compromised SSH keys in lab. Skip creation.")
+        return None
 
     logger.info("🚧 Create temporary compromised SSH keys for lab")
     # Generate a private key
