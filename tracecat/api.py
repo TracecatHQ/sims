@@ -14,6 +14,7 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from tracecat.agents import TRACECAT__LAB_ACTIONS_LOGS_PATH
 from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
     LabInformation,
@@ -28,46 +29,56 @@ load_dotenv(find_dotenv())
 logger = standard_logger(__name__)
 
 
-api_call_stats_file_lock = asyncio.Lock()
-action_stats_file_lock = asyncio.Lock()
+API_CALL_STATISTICS_FILE_PATH = TRACECAT__API_DIR / "api_calls.json"
+ACTION_STATISTICS_FILE_PATH = TRACECAT__API_DIR / "action_statistics.json"
+STATISTICS_FILE_PATH = TRACECAT__API_DIR / "statistics.json"
+
+
+API_CALL_STATISTICS_FILE_PATH.touch(exist_ok=True)
+ACTION_STATISTICS_FILE_PATH.touch(exist_ok=True)
+STATISTICS_FILE_PATH.touch(exist_ok=True)
+
+
+API_CALL_STATISTICS_FILE_LOCK = asyncio.Lock()
+ACTION_STATISTICS_FILE_LOCK = asyncio.Lock()
+TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
+
+for q in ["statistics", "activity"]:
+    TRACECAT__LOG_QUEUES[q] = asyncio.Queue()
 
 
 async def tail_file_handler():
-    log_file = TRACECAT__API_DIR / "logs/test.log"
-    async for line in tail_file(log_file):
+    async for line in tail_file(TRACECAT__LAB_ACTIONS_LOGS_PATH):
         line = line.strip()
-        for _, q in queues.items():
+        for _, q in TRACECAT__LOG_QUEUES.items():
             await q.put(line)
 
 
 async def update_stats_handler():
-    api_call_stats_file = TRACECAT__API_DIR / "api_calls.json"
-    action_stats_file = TRACECAT__API_DIR / "action_stats.json"
 
-    api_call_stats_file.touch(exist_ok=True)
-    action_stats_file.touch(exist_ok=True)
     while True:
-        item = await queues["stats"].get()
+        item = await TRACECAT__LOG_QUEUES["statistics"].get()
         item = json.loads(item)
-        async with api_call_stats_file_lock:
-            data = safe_json_load(api_call_stats_file)
+
+        async with API_CALL_STATISTICS_FILE_LOCK:
+            data = safe_json_load(API_CALL_STATISTICS_FILE_PATH)
 
             # update api call frequency
             action = item["action"]
             data[action] = data.get(action, 0) + 1
-            with api_call_stats_file.open("w") as f:
+            with API_CALL_STATISTICS_FILE_PATH.open("w") as f:
                 json.dump(data, f)
 
-        async with action_stats_file_lock:
+        async with ACTION_STATISTICS_FILE_LOCK:
             # Update total api calls per user
             # If user bad update bad user count
-            data = safe_json_load(action_stats_file)
+            data = safe_json_load(ACTION_STATISTICS_FILE_PATH)
 
             # update bad api call frequency
             data["bad_api_calls_count"] = data.get("bad_api_calls_count", 0) + 1
             action = item["action"]
             data[action] = data.get(action, 0) + 1
-            with api_call_stats_file.open("w") as f:
+            with ACTION_STATISTICS_FILE_PATH.open("w") as f:
                 json.dump(data, f)
 
 
@@ -149,16 +160,12 @@ def delete_lab():
 
 # Live Agent Feeds
 
-queues: dict[str, asyncio.Queue] = {}
-for q in ["stats", "activity"]:
-    queues[q] = asyncio.Queue()
-
 
 @app.get("/feed/activity", response_class=EventSourceResponse)
 async def stream_activity():
     async def log_stream():
         while True:
-            item = await queues["activity"].get()
+            item = await TRACECAT__LOG_QUEUES["activity"].get()
             yield item
 
     return EventSourceResponse(log_stream())
@@ -190,9 +197,8 @@ def validate_statistics_id(id: str):
 
 @app.get("/feed/statistics/{id}")
 async def stream_statistics(id: Annotated[str, Depends(validate_statistics_id)]):
-    stats_path = TRACECAT__API_DIR / "stats.json"
     if id == "STAT-0005":
-        data = safe_json_load(TRACECAT__API_DIR / "api_calls.json")
+        data = safe_json_load(API_CALL_STATISTICS_FILE_PATH)
 
         return {
             "id": "STAT-0005",
@@ -201,7 +207,7 @@ async def stream_statistics(id: Annotated[str, Depends(validate_statistics_id)])
             "description": "",
         }
     elif id == "STAT-0006":
-        data = safe_json_load(TRACECAT__API_DIR / "action_stats.json")
+        data = safe_json_load(ACTION_STATISTICS_FILE_PATH)
 
         denom = sum(data.values())
         value = 0 if denom == 0 else data.get("bad_api_calls_count", 0) / denom * 100
@@ -212,7 +218,7 @@ async def stream_statistics(id: Annotated[str, Depends(validate_statistics_id)])
             "units": "%",
             "description": "",
         }
-    stats = safe_json_load(stats_path)
+    stats = safe_json_load(STATISTICS_FILE_PATH)
     for item in stats:
         if item["id"] == id:
             return item
