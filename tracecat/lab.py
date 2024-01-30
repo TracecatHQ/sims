@@ -1,10 +1,15 @@
+import asyncio
 import os
 import shutil
-import asyncio
+import subprocess
 from datetime import datetime
+from enum import StrEnum
+from pathlib import Path
+
+from pydantic import BaseModel
 
 from tracecat.attack.ddos import ddos
-from tracecat.config import TRACECAT__TRIAGE_DIR
+from tracecat.config import TRACECAT__LAB_DIR, TRACECAT__TRIAGE_DIR, path_to_pkg
 from tracecat.defense.siem_alerts import get_datadog_alerts
 from tracecat.evaluation import (
     compute_confusion_matrix,
@@ -14,16 +19,9 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_cloudtrail_logs,
     load_triaged_cloudtrail_logs,
 )
-import subprocess
-from pathlib import Path
-from enum import StrEnum
-
-from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.logger import standard_logger
 from tracecat.scenarios import SCENARIO_ID_TO_RUN
-
-from tracecat.setup import create_ip_whitelist, create_compromised_ssh_keys
-
+from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
 
 logger = standard_logger(__name__, level="INFO")
 
@@ -59,7 +57,7 @@ def check_lab():
     # 1. Non-empty directory
     # 2. `terraform plan` no changes
     # 3. But no logs
-    # Running 
+    # Running
     pass
 
 
@@ -119,10 +117,9 @@ async def detonate_lab(
     timeout: int | None = None,
     delayed_seconds: int | None = None,
     max_tasks: int | None = None,
-    max_actions: int | None = None
+    max_actions: int | None = None,
 ):
-    """Asynchronously run organization to simuluate normal behavior and detonate attack.
-    """
+    """Asynchronously run organization to simuluate normal behavior and detonate attack."""
     timeout = timeout or 300
     delayed_seconds = delayed_seconds or 60
 
@@ -132,7 +129,14 @@ async def detonate_lab(
         raise KeyError("Scenario ID not found: %s", scenario_id) from err
 
     try:
-        await asyncio.wait_for(run(delay_seconds=delayed_seconds, max_tasks=max_tasks, max_actions=max_actions), timeout=timeout)
+        await asyncio.wait_for(
+            run(
+                delay_seconds=delayed_seconds,
+                max_tasks=max_tasks,
+                max_actions=max_actions,
+            ),
+            timeout=timeout,
+        )
     except asyncio.TimeoutError:
         logger.info("✅ Simulation finished after %s seconds", timeout)
 
