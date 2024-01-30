@@ -17,7 +17,7 @@ import subprocess
 from importlib import resources
 from pathlib import Path
 
-from tracecat.config import TRACECAT__LAB_DIR
+from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.logger import standard_logger
 
 from tracecat.setup import create_ip_whitelist, create_compromised_ssh_keys
@@ -26,22 +26,16 @@ from tracecat.setup import create_ip_whitelist, create_compromised_ssh_keys
 logger = standard_logger(__name__, level="INFO")
 
 
-def _path_to_pkg() -> Path:
-    import tracecat
-
-    return resources.files(tracecat).parent
-
-
 def _run_terraform(cmds: list[str]):
     subprocess.run(
         ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
-        cwd=_path_to_pkg(),
+        cwd=path_to_pkg(),
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
     )
 
 
 def _scenario_to_infra_path(scenario_id: str) -> Path:
-    path = _path_to_pkg() / "terraform" / scenario_id / "infra"
+    path = path_to_pkg() / "terraform" / scenario_id / "infra"
     return path
 
 
@@ -63,7 +57,7 @@ def _initialize_lab(scenario_id: str):
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Create Terraform in Docker container")
     subprocess.run(
-        ["docker", "compose", "-f", _path_to_pkg() / "docker-compose.yaml", "up", "-d"],
+        ["docker", "compose", "-f", path_to_pkg() / "docker-compose.yaml", "up", "-d"],
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
     )
 
@@ -167,7 +161,7 @@ def cleanup_lab():
     logger.info("🧹 Spin down Terraform in Docker")
     subprocess.run(
         ["docker", "compose", "down"],
-        cwd=_path_to_pkg(),
+        cwd=path_to_pkg(),
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
     )
     # Remove triaged logs

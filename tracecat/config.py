@@ -1,4 +1,5 @@
 import os
+import resources
 from pathlib import Path
 
 LOGS_FILE_TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
@@ -13,3 +14,9 @@ TRACECAT__TRIAGE_DIR = TRACECAT__HOME_DIR / "triage"
 TRACECAT__LOGS_DIR = TRACECAT__HOME_DIR / "logs"  # Nice clean normalized logs
 TRACECAT__DOCKER_COMPOSE_NAME = "tracecat-lab"
 TRACECAT__DOCKER_WORKDIR = "/home/terraform/lab"
+
+
+def path_to_pkg() -> Path:
+    import tracecat
+
+    return resources.files(tracecat).parent
