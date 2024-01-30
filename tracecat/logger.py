@@ -4,23 +4,17 @@ import logging
 import os
 from pathlib import Path
 from typing import Literal
+from uuid import UUID, uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 LOG_FORMAT = (
     "%(asctime)s - [%(levelname)s] - %(name)s::%(funcName)s(%(lineno)d) - %(message)s"
 )
 
 
-def log_id_gen():
-    i = 0
-    while True:
-        yield f"LOG-{i:04d}"
-        i += 1
-
-
-class Log(BaseModel):
-    id: str
+class ActionLog(BaseModel):
+    uid: UUID = Field(default_factory=uuid4)
     title: str
     user: str
     action: str
@@ -106,23 +100,22 @@ def standard_logger(
 
 def composite_logger(
     name: str,
+    file_path: Path,
     level: int | str | None = None,
-    file_paths: list[str | Path] | None = None,
-    format: Literal["json", "log"] | None = None,
+    log_format: Literal["json", "log"] | None = None,
 ) -> logging.Logger:
-    """Log to stdout and file(s)"""
+    """Log to stdout and file."""
+
     logger = logging.getLogger(name)
     logger.setLevel(level or os.getenv("LOG_LEVEL", "INFO"))
-    format = format or "log"
-    formatter = LOG_FORMATTER_FACTORY[format]
+    log_format = log_format or "log"
+    formatter = LOG_FORMATTER_FACTORY[log_format]
 
     # Files
-    if file_paths is not None:
-        for file in file_paths:
-            file = Path(file)
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.touch(exist_ok=True)
-            logger.addHandler(logging.FileHandler(str(file)))
+    f = Path(file_path)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.touch(exist_ok=True)
+    logger.addHandler(logging.FileHandler(str(f)))
 
     # Stderr
     logger.addHandler(logging.StreamHandler())
@@ -133,10 +126,10 @@ def composite_logger(
 
 async def tail_file(file_path: Path):
     """Tail an NDJSON file and put new lines into a queue."""
-    with open(file_path, "r") as file:
-        file.seek(0, 2)  # Go to the end of the file
+    with open(file_path, "r") as f:
+        f.seek(0, 2)  # Go to the end of the file
         while True:
-            line = file.readline()
+            line = f.readline()
             if not line:
                 await asyncio.sleep(0.1)  # Wait briefly
                 continue

@@ -27,6 +27,10 @@ Simpler kflow (less api calls):
 """
 from __future__ import annotations
 
+import asyncio
+import random
+from abc import abstractmethod, ABC
+import boto3
 import inspect
 import textwrap
 from abc import ABC, abstractmethod
@@ -36,9 +40,16 @@ from typing import Any, TypeVar
 import boto3
 from pydantic import BaseModel
 
+from tracecat.config import TRACECAT__LAB_DIR
+from tracecat.llm import async_openai_call
+from tracecat.logger import ActionLog, composite_logger, file_logger
 from tracecat.credentials import load_lab_credentials
 from tracecat.llm import async_openai_call
-from tracecat.logger import standard_logger
+
+
+TRACECAT__LAB_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
+TRACECAT__LAB_ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
+
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -134,19 +145,61 @@ class User(ABC):
         self.max_actions = max_actions or 10
         self.tasks = deque()
         self.objectives: list[str] = []
-        self.logger = standard_logger(self.name)
+        # For lab diagnostics
+        self.logger = composite_logger(
+            f"diagnostics__{self.name}",
+            file_paths=TRACECAT__LAB_LOGS_PATH,
+            format="log",
+        )
+        # For actions
+        self.action_logger = file_logger(
+            f"actions__{self.name}",
+            file_path=TRACECAT__LAB_ACTIONS_LOGS_PATH,
+            format="json"
+        )
 
     @abstractmethod
     async def get_objective(self) -> Objective:
         pass
 
-    @abstractmethod
     async def perform_task(self, task: Task):
-        pass
+        for action in task.actions:
+            await self.perform_action(action)
 
-    @abstractmethod
     async def perform_action(self, action: Action):
-        pass
+        # Add random noise to action.duration
+        action.duration = min(action.duration, 3)
+
+        offset = int(0.3 * action.duration)
+        action.duration += random.randint(-offset, offset)
+        self.logger.info(f"Begin action: {action}...")
+        duration = action.duration
+        start_delay = random.random() * duration
+        await asyncio.sleep(start_delay)
+
+        # Do action AKA API call
+        self.logger.info(f"Making API call: {action.name}...")
+        if action.name is None:
+            title = "No API call made"
+            action_name = "None"
+        else:
+            title = f"Performed API call {action.name}"
+            action_name = action.name
+            await self._perform_action(action)
+
+        # Log action
+        log = ActionLog(
+            title=title,
+            user=self.name,
+            action=action_name,
+            description=action.description,
+        )
+        self.action_logger.info(log)
+
+        # End delay
+        await asyncio.sleep(duration - start_delay)
+        self.logger.info(f"End action: {action.name}")
+
 
     async def run(self):
         """Run the user's script on the event loop."""
@@ -178,21 +231,30 @@ class PythonBoto3APICall(BaseModel):
 
 
 class AWSUser(User):
-    async def _make_aws_api_call(self, action: Action):
+
+    async def _make_aws_api_call(self, action: Action, max_retries: int = 3):
         error = None
-        for _ in range(3):
+        for _ in range(max_retries):
             system_context = "You are an expert at performing AWS API calls."
+            error_msg = (
+                (
+                    f"\bThere was an error in the previous API call:"
+                    f"\n```\n{error}\n```"
+                    f"\nPlease amend your API call and try again.\n"
+                )
+                if error is not None
+                else ""
+            )
             prompt = textwrap.dedent(
                 f"""
                 Your objective is to perform the following AWS API call using the python3 boto3 client with the objective:
                 Action: {action.name}
                 Objective: {action.description}
-
+                {error_msg}
                 Please describe a PythonBoto3APICall according to the following pydantic model.
                 ```
                 {model_as_text(PythonBoto3APICall)}
                 ```
-                {f'Error in previous call: {error}' if error is not None else ''}
                 """
             )
             args = await async_openai_call(
