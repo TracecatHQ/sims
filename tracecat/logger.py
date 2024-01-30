@@ -49,12 +49,12 @@ def file_logger(
     name: str,
     file_path: str,
     level: int | str | None = None,
-    format: Literal["json", "log"] | None = None,
+    log_format: Literal["json", "log"] | None = None,
 ) -> logging.Logger:
     """Sets up a logger that logs messages to a file."""
     logger = logging.getLogger(name)
-    format = format or "log"
-    formatter = LOG_FORMATTER_FACTORY[format]
+    log_format = log_format or "log"
+    formatter = LOG_FORMATTER_FACTORY[log_format]
 
     # Set logger level
     resolved_level = level or os.getenv("LOG_LEVEL", "INFO")
@@ -77,12 +77,12 @@ def file_logger(
 def standard_logger(
     name: str,
     level: int | str | None = None,
-    format: Literal["json", "log"] | None = None,
+    log_format: Literal["json", "log"] | None = None,
 ) -> logging.Logger:
     """Sets up a logger that logs messages to the console."""
     logger = logging.getLogger(name)
-    format = format or "log"
-    formatter = LOG_FORMATTER_FACTORY[format]
+    log_format = log_format or "log"
+    formatter = LOG_FORMATTER_FACTORY[log_format]
 
     # Set logger level
     resolved_level = level or os.getenv("LOG_LEVEL", "INFO")

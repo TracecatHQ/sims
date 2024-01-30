@@ -151,14 +151,14 @@ class User(ABC):
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
-            file_paths=TRACECAT__LAB_DEBUG_LOGS_PATH,
-            format="log",
+            file_path=TRACECAT__LAB_DEBUG_LOGS_PATH,
+            log_format="log",
         )
         # For actions
         self.action_logger = file_logger(
             f"actions__{self.name}",
             file_path=TRACECAT__LAB_ACTIONS_LOGS_PATH,
-            format="json"
+            log_format="json"
         )
 
     @abstractmethod
