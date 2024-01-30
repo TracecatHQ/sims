@@ -129,6 +129,8 @@ def _load_cloudtrail_gzip(object_name: str, bucket_name: str) -> Path:
 
 def _load_cloudtrail_ndjson(
     ndjson_file_paths: list[Path],
+    start: datetime,
+    end: datetime,
     malicious_ids: list[str],
     normal_ids: list[str],
 ) -> Path:
@@ -140,9 +142,10 @@ def _load_cloudtrail_ndjson(
         # NOTE: This might cause memory to blow up
         pl.scan_ndjson(ndjson_file_paths, infer_schema_length=None)
         .select(SELECTED_FIELDS)
+        .filter(pl.col("eventTime").str.strftime().is_between(start, end))
+        .filter(pl.col("accessKeyId").is_in(malicious_ids + normal_ids))
         # Defensive to avoid concats with mismatched struct column schemas
         .select(pl.all().cast(pl.Utf8))
-        .filter(pl.col("accessKeyId").is_in(malicious_ids + normal_ids))
         .collect(streaming=True)
         .write_parquet(logs_file_path)
     )
@@ -184,16 +187,27 @@ def load_cloudtrail_logs(
         desc="📂 Download AWS CloudTrail logs",
     )
     logs_file_path = _load_cloudtrail_ndjson(
-        ndjson_file_paths, malicious_ids=malicious_ids, normal_ids=normal_ids
+        ndjson_file_paths,
+        start=start,
+        end=end,
+        malicious_ids=malicious_ids,
+        normal_ids=normal_ids
     )
     return logs_file_path
 
 
 def load_triaged_cloudtrail_logs(
-    malicious_ids: list[str], normal_ids: list[str]
+    start: datetime,
+    end: datetime,
+    malicious_ids: list[str],
+    normal_ids: list[str]
 ) -> Path:
     ndjson_file_paths = AWS_CLOUDTRAIL__TRIAGE_DIR.glob("*")
     logs_file_path = _load_cloudtrail_ndjson(
-        ndjson_file_paths, malicious_ids=malicious_ids, normal_ids=normal_ids
+        ndjson_file_paths,
+        start=start,
+        end=end,
+        malicious_ids=malicious_ids,
+        normal_ids=normal_ids
     )
     return logs_file_path
