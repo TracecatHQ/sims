@@ -2,13 +2,15 @@ import asyncio
 import os
 import shutil
 import subprocess
-from datetime import datetime
+import time
+from contextlib import contextmanager
+from tenacity import retry, stop_after_attempt
+from datetime import datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from tracecat.attack.ddos import ddos
 from tracecat.config import TRACECAT__LAB_DIR, TRACECAT__TRIAGE_DIR, path_to_pkg
 from tracecat.defense.siem_alerts import get_datadog_alerts
 from tracecat.evaluation import (
@@ -22,6 +24,8 @@ from tracecat.ingestion.aws_cloudtrail import (
 from tracecat.logger import standard_logger
 from tracecat.scenarios import SCENARIO_ID_TO_RUN
 from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
+from tracecat.credentials import load_lab_credentials
+
 
 logger = standard_logger(__name__, level="INFO")
 
@@ -43,12 +47,14 @@ class LabStatus(StrEnum):
     cold = "cold"  # No lab
     warm = "warm"  # Lab with infrastructure
     running = "running"  # Ongoing simulation
-    complete = "complete"  # Simutation complete
+    complete = "completed"  # Simutation complete
+    failed = "failed"  # Simutation complete
 
 
 class LabInformation(BaseModel):
     status: LabStatus
-    results: dict | None
+    results: dict | None = None
+    error: str | None = None
 
 
 def check_lab():
@@ -56,9 +62,28 @@ def check_lab():
     # Warm:
     # 1. Non-empty directory
     # 2. `terraform plan` no changes
-    # 3. But no logs
-    # Running
+    # 3. But no Action logs
+    # Running:
+    # Warm 1 + 2 and Action logs, but no timeout
+    # Completed: TimeoutError
+    # Failed: Any other exception
     pass
+
+
+def _deploy_lab() -> Path:
+    """Deploy lab infrastructure ready for attacks.
+
+    Assumes lab project files already configured and Terraform in Docker is available.
+    """
+    # Terraform plan (safety)
+    # TODO: Capture stdout and deal with errors
+    logger.info("🚧 Run Terraform plan")
+    _run_terraform(["plan"])
+
+    # Terraform deploy
+    # TODO: Capture stdout and deal with errors
+    logger.info("🚧 Run Terraform apply")
+    _run_terraform(["apply"])
 
 
 def initialize_lab(scenario_id: str):
@@ -91,25 +116,8 @@ def initialize_lab(scenario_id: str):
     logger.info("🚧 Initialize Terraform project")
     _run_terraform(["init"])
 
-
-def deploy_lab() -> Path:
-    """Deploy lab infrastructure ready for attacks.
-
-    Assumes lab project files already configured and Terraform in Docker is available.
-    """
-    # Terraform plan (safety)
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Run Terraform plan")
-    _run_terraform(["plan"])
-
-    # Terraform deploy
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Run Terraform apply")
-    _run_terraform(["apply"])
-
-
-def ddos_lab(n_attacks: int = 10, delay: int = 1):
-    ddos(n_attacks=n_attacks, delay=delay)
+    logger.info("🚧 Deploy Terraform project")
+    _deploy_lab()
 
 
 async def detonate_lab(
@@ -138,20 +146,27 @@ async def detonate_lab(
             timeout=timeout,
         )
     except asyncio.TimeoutError:
-        logger.info("✅ Simulation finished after %s seconds", timeout)
+        logger.info("✅ Lab timed out successfully after %s seconds", timeout)
 
 
-def diagnose_lab(
+def evaluate_lab(
     start: datetime,
     end: datetime,
     bucket_name: str | None = None,
-    malicious_ids: list[str] | None = None,
-    normal_ids: list[str] | None = None,
     regions: list[str] | None = None,
     account_id: str = None,
+    malicious_ids: list[str] | None = None,
+    normal_ids: list[str] | None = None,
     triage: bool = False,
 ):
-    malicious_ids = malicious_ids or []
+    normal_ids = [
+        creds["aws_access_key_id"] for creds in
+        load_lab_credentials(is_compromised=False).values()
+    ]
+    malicious_ids = [
+        creds["aws_access_key_id"] for creds in
+        load_lab_credentials(is_compromised=True).values()
+    ]
     if triage:
         logs_source = load_triaged_cloudtrail_logs(
             malicious_ids=malicious_ids,
@@ -177,6 +192,67 @@ def diagnose_lab(
         malicious_ids=malicious_ids,
     )
     compute_confusion_matrix(correlated_alerts)
+
+
+@contextmanager
+def track_time():
+    class Timer:
+        def __init__(self):
+            self.start_time = time.time()
+            self.end_time = None
+            self.elapsed = None
+
+        def stop(self):
+            self.end_time = time.time()
+            self.elapsed = self.end_time - self.start_time
+
+    timer = Timer()
+    yield timer
+    timer.stop()
+
+
+def run_lab(
+    scenario_id: str,
+    timeout: int | None = None,
+    delayed_seconds: int | None = None,
+    max_tasks: int | None = None,
+    max_actions: int | None = None,
+    bucket_name: str | None = None,
+    regions: list[str] | None = None,
+    account_id: str = None,
+    malicious_ids: list[str] | None = None,
+    normal_ids: list[str] | None = None,
+    task_retries: int | None = None,
+    buffer_time: timedelta | None = None,
+    triage: bool = False,
+) -> Path:
+    """Run lab and return path to lab results.
+
+    Lab results contain th
+    """
+    _retry = retry(stop=stop_after_attempt(task_retries))
+    task_retries = task_retries or 3
+    task_queue = [
+        (initialize_lab, {"scenario_id": scenario_id}),
+        (detonate_lab, {"timeout": timeout, "delayed_seconds": delayed_seconds, "max_tasks": max_tasks, "max_actions": max_actions}),
+    ]
+    with track_time() as timer:
+        for task, params in task_queue:
+            result = _retry(task)(**params)
+
+    buffer_time = buffer_time or timedelta(hours=1)
+    evaluate_lab(
+        start=timer.start_time - buffer_time,
+        end=timer.end_time + buffer_time,
+        bucket_name=bucket_name,
+        regions=regions,
+        account_id=account_id,
+        malicious_ids=malicious_ids,
+        normal_ids=normal_ids,
+        triage=triage
+    )
+
+    return result
 
 
 class FailedTerraformDestroy(Exception):

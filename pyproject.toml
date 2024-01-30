@@ -41,6 +41,7 @@ dependencies = [
   "regex",
   "sqlmodel",
   "sse_starlette",
+  "tenacity",
   "typer",
   "uvicorn",
 ]

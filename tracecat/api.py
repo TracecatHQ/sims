@@ -8,7 +8,8 @@ from typing import Annotated, Any, Optional
 
 import polars as pl
 from dotenv import find_dotenv, load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from datetime import timedelta
+from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
@@ -19,9 +20,7 @@ from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
     LabInformation,
     check_lab,
-    clean_up_lab,
-    deploy_lab,
-    initialize_lab,
+    run_lab,
 )
 from tracecat.logger import standard_logger, tail_file
 
@@ -137,13 +136,40 @@ def get_lab():
 
 
 @app.post("lab")
-async def create_lab(scenario_id: str, task_retries: int = 3):
-    """Warm-up lab infrastructure and detonate attacks.
-
-    Note: this triggers a background task.
-    """
-    initialize_lab(scenario_id=scenario_id)
-    deploy_lab()
+async def create_lab(
+    scenario_id: str,
+    background_tasks: BackgroundTasks,
+    timeout: int | None = None,
+    delayed_seconds: int | None = None,
+    max_tasks: int | None = None,
+    max_actions: int | None = None,
+    bucket_name: str | None = None,
+    regions: list[str] | None = None,
+    account_id: str = None,
+    malicious_ids: list[str] | None = None,
+    normal_ids: list[str] | None = None,
+    task_retries: int | None = None,
+    buffer_time: timedelta | None = None,
+    triage: bool = False,
+):
+    """Run detections lab."""
+    background_tasks.add_task(
+        run_lab,
+        scenario_id=scenario_id,
+        timeout=timeout,
+        delayed_seconds=delayed_seconds,
+        max_tasks=max_tasks,
+        max_actions=max_actions,
+        bucket_name=bucket_name,
+        regions=regions,
+        account_id=account_id,
+        malicious_ids=malicious_ids,
+        normal_ids=normal_ids,
+        task_retries=task_retries,
+        buffer_time=buffer_time,
+        triage=triage
+    )
+    return {"message": "Lab created"}
 
 
 @app.delete("lab")
