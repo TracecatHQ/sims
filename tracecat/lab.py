@@ -210,7 +210,7 @@ def track_time():
     timer.stop()
 
 
-def run_lab(
+async def run_lab(
     scenario_id: str,
     timeout: int | None = None,
     delayed_seconds: int | None = None,
@@ -233,11 +233,20 @@ def run_lab(
     _retry = retry(stop=stop_after_attempt(task_retries))
     task_queue = [
         (initialize_lab, {"scenario_id": scenario_id}),
-        (detonate_lab, {"timeout": timeout, "delayed_seconds": delayed_seconds, "max_tasks": max_tasks, "max_actions": max_actions}),
+        (detonate_lab, {
+            "scenario_id": scenario_id,
+            "timeout": timeout,
+            "delayed_seconds": delayed_seconds,
+            "max_tasks": max_tasks,
+            "max_actions": max_actions}
+        ),
     ]
     with track_time() as timer:
         for task, params in task_queue:
-            result = _retry(task)(**params)
+            if asyncio.iscoroutinefunction(task):
+                await _retry(task)(**params)
+            else:
+                _retry(task)(**params)
 
     buffer_time = buffer_time or timedelta(hours=1)
     evaluate_lab(
@@ -250,8 +259,6 @@ def run_lab(
         normal_ids=normal_ids,
         triage=triage
     )
-
-    return result
 
 
 class FailedTerraformDestroy(Exception):
