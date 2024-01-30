@@ -29,7 +29,6 @@ from __future__ import annotations
 
 from abc import abstractmethod, ABC
 import boto3
-import os
 import inspect
 import textwrap
 from collections import deque
@@ -38,6 +37,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 from tracecat.llm import async_openai_call
 from tracecat.logging import standard_logger
+from tracecat.credentials import load_lab_credentials
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -193,11 +193,16 @@ class AWSUser(User):
                 prompt, system_context=system_context, response_format="json_object"
             )
             try:
-                session = boto3.Session(profile_name=self.name)
                 service = args.pop("service")
                 method = args.pop("method")
                 kwargs = args.pop("kwargs")
-                client = session.client(service)
+                # TODO: Use context manager to switch compromised / not
+                creds = load_lab_credentials(is_compromised=False)
+                client = boto3.client(
+                    service,
+                    aws_access_key_id=creds[self.name]["aws_access_key_id"],
+                    aws_secret_access_key=creds[self.name]["aws_secret_access_key"]
+                )
                 fn = getattr(client, method)
                 result = fn(**kwargs)
                 return result
