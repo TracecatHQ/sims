@@ -39,7 +39,7 @@ def _run_terraform(cmds: list[str]):
 
 
 def _scenario_to_infra_path(scenario_id: str) -> Path:
-    path = path_to_pkg() / "terraform" / scenario_id / "infra"
+    path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "infra"
     return path
 
 
