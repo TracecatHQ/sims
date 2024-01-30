@@ -27,6 +27,7 @@ Simpler kflow (less api calls):
 """
 from __future__ import annotations
 
+from abc import abstractmethod, ABC
 import boto3
 import os
 import inspect
@@ -119,7 +120,7 @@ class Objective(BaseModel):
     tasks: list[Task]
 
 
-class User:
+class User(ABC):
     def __init__(self, name: str, policy: dict[str, Any], background: str):
         self.name = name
         self.policy = policy
@@ -128,12 +129,15 @@ class User:
         self.objectives: list[str] = []
         self.logger = standard_logger(self.name)
 
+    @abstractmethod
     async def get_objective(self) -> Objective:
         pass
 
+    @abstractmethod
     async def perform_task(self, task: Task):
         pass
 
+    @abstractmethod
     async def perform_action(self, action: Action):
         pass
 
@@ -189,13 +193,10 @@ class AWSUser(User):
                 prompt, system_context=system_context, response_format="json_object"
             )
             try:
+                session = boto3.Session(profile_name=self.name)
                 service = args.pop("service")
                 method = args.pop("method")
                 kwargs = args.pop("kwargs")
-                session = boto3.Session(
-                    profile_name=self.name,
-                    region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"),
-                )
                 client = session.client(service)
                 fn = getattr(client, method)
                 result = fn(**kwargs)
