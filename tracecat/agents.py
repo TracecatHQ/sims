@@ -47,7 +47,7 @@ from tracecat.credentials import load_lab_credentials
 from tracecat.llm import async_openai_call
 
 
-TRACECAT__LAB_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
+TRACECAT__LAB_DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
 TRACECAT__LAB_ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
 
 
@@ -148,7 +148,7 @@ class User(ABC):
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
-            file_paths=TRACECAT__LAB_LOGS_PATH,
+            file_paths=TRACECAT__LAB_DEBUG_LOGS_PATH,
             format="log",
         )
         # For actions
