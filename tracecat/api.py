@@ -80,6 +80,8 @@ JobStatus = Literal["success", "error"]
 
 async def tail_file_handler():
     log_file = TRACECAT__API_DIR / "logs/test.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    log_file.touch(exist_ok=True)
 
     async for line in tail_file(log_file):
         line = line.strip()
@@ -203,3 +205,19 @@ async def get_graph_feed(id: Annotated[str, Depends(validate_graph_id)]):
     path = TRACECAT__API_DIR / "api_calls.json"
     calls = safe_json_load(path)
     return calls
+
+
+@app.get("/autotune/banner")
+def get_autotune_banner():
+    return [
+        {"key": "fixed-detections", "value": "11", "subtitleValue": "159"},
+        {"key": "hours-saved", "value": "52", "subtitleValue": "457"},
+        {"key": "money-saveable", "value": "19283", "subtitleValue": "268901"},
+    ]
+
+
+@app.get("/autotune/table")
+def get_autotune_feature():
+    with open(".data/rules.json") as f:
+        data = json.load(f)
+    return data
