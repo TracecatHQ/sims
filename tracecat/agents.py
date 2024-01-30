@@ -48,9 +48,6 @@ def model_as_text(model: type[T]) -> str:
 
 __REPLACE_WITH_ACTIONS_LIST__ = str
 
-MAX_TASKS = 10
-MAX_ACTIONS = 10
-
 
 class Action(BaseModel):
     """An action that a user can perform.
@@ -121,10 +118,12 @@ class Objective(BaseModel):
 
 
 class User(ABC):
-    def __init__(self, name: str, policy: dict[str, Any], background: str):
+    def __init__(self, name: str, policy: dict[str, Any], background: str, max_tasks: int | None = None, max_actions: int | None = None):
         self.name = name
         self.policy = policy
         self.background = background
+        self.max_tasks = max_tasks or 10
+        self.max_actions = max_actions or 10
         self.tasks = deque()
         self.objectives: list[str] = []
         self.logger = standard_logger(self.name)
