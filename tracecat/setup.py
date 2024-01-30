@@ -1,10 +1,12 @@
 from ipaddress import ip_address
 from pathlib import Path
+import io
 
 import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import load_ssh_public_key
 
 from tracecat.config import TRACECAT__LAB_DIR
 from tracecat.logger import standard_logger
@@ -55,14 +57,14 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
     with open(priv_file_path, "wb") as f:
         f.write(private_pem)
 
-    # Get and serialize public key in PEM format
+    # Get and serialize public key in OpenSSH format
     public_key = private_key.public_key()
-    public_pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    public_ssh = public_key.public_bytes(
+        encoding=serialization.Encoding.OpenSSH,
+        format=serialization.PublicFormat.OpenSSH,
     )
 
-    # Write the public key to a file
+    # Write the public key to a file in OpenSSH format
     pub_file_path = dir_path / "cloudgoat.pub"
     with open(pub_file_path, "wb") as f:
-        f.write(public_pem)
+        f.write(public_ssh)
