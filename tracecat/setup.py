@@ -16,6 +16,17 @@ from tracecat.logger import standard_logger
 logger = standard_logger(__name__, level="INFO")
 
 
+def _path_to_pkg() -> Path:
+    import tracecat
+
+    return resources.files(tracecat).parent
+
+
+def _scenario_to_infra_path(scenario_id: str) -> Path:
+    path = _path_to_pkg() / "terraform" / scenario_id / "infra"
+    return path
+
+
 def create_ip_whitelist(dir_path: Path | None = None):
     """Write own IP address into whitelist.
 
@@ -72,12 +83,6 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
         f.write(public_pem)
 
 
-def _path_to_pkg() -> Path:
-    import tracecat
-
-    return resources.files(tracecat).parent
-
-
 def run_terraform(cmds: list[str]):
     subprocess.run(
         ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
@@ -86,13 +91,12 @@ def run_terraform(cmds: list[str]):
     )
 
 
-def initialize_lab(project_path: Path):
+def initialize_lab(scenario_id: str):
     """Create lab directory and spin-up Terraform in Docker.
 
     Parameters
     ----------
-    project_path : Path
-        Path to Terraform project files.
+    scenario_id : str
     """
 
     logger.info("🐱 Create new lab directory")
@@ -112,6 +116,7 @@ def initialize_lab(project_path: Path):
 
     # Copy Terraform project into labs
     logger.info("🚧 Copy Terraform project into lab")
+    project_path = _scenario_to_infra_path(scenario_id=scenario_id)
     shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
 
     logger.info("🚧 Initialize Terraform project")
@@ -166,10 +171,3 @@ def cleanup_lab():
     )
 
     logger.info("✅ Lab cleanup complete. What will you break next?")
-
-
-if __name__ == "__main__":
-    project_path = _path_to_pkg() / "tracecat/attack/scenarios/codebuild"
-    initialize_lab(project_path=project_path)
-    deploy_lab()
-    # cleanup_lab()
