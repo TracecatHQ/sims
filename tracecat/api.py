@@ -20,6 +20,7 @@ from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
     LabInformation,
     check_lab,
+    clean_up_lab,
     run_lab,
 )
 from tracecat.logger import standard_logger, tail_file
