@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
+import polars as pl
 from dotenv import find_dotenv, load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,13 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from tracecat.config import TRACECAT__API_DIR
-from tracecat.lab import clean_up_lab, initialize_lab, deploy_lab, check_lab, LabInformation
+from tracecat.lab import (
+    LabInformation,
+    check_lab,
+    clean_up_lab,
+    deploy_lab,
+    initialize_lab,
+)
 from tracecat.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
@@ -121,7 +128,7 @@ def get_lab():
 @app.post("lab")
 async def create_lab(scenario_id: str, task_retries: int = 3):
     """Warm-up lab infrastructure and detonate attacks.
-    
+
     Note: this triggers a background task.
     """
     initialize_lab(scenario_id=scenario_id)
@@ -224,3 +231,95 @@ async def stream_events_distribution(id: Annotated[str, Depends(validate_events_
     path = TRACECAT__API_DIR / "api_calls.json"
     calls = safe_json_load(path)
     return calls
+
+
+@app.get("/autotune/banner")
+def get_autotune_banner():
+    return [
+        {"key": "fixed-detections", "value": "11", "subtitleValue": "159"},
+        {"key": "hours-saved", "value": "52 Hours", "subtitleValue": "457"},
+        {"key": "money-saveable", "value": "$19283", "subtitleValue": "268901"},
+    ]
+
+
+@app.get("/autotune/rules/")
+def get_all_rules():
+    import numpy as np
+
+    df = (
+        pl.scan_parquet(".data/datadog.parquet")
+        .drop_nulls()
+        .select(
+            [
+                "rule_id",
+                "rule_name",
+                "source",
+                "tactic",
+                "technique",
+                "queries",
+                "cases",
+                "message",
+            ]
+        )
+        .collect(streaming=True)
+    )
+    return (
+        df.lazy()
+        .with_columns(
+            score=np.random.randint(0, 100, df.height),
+            status=pl.lit("active"),
+            timeSaved=np.random.randint(30, 100, df.height),
+            severity=np.random.choice(["low", "medium", "high"], df.height),
+        )
+        .rename({"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"})
+        .collect(streaming=True)
+        .to_dicts()
+    )
+
+
+new_query = [
+    {
+        "query": "source:(apache OR nginx) (@http.referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http.user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
+        "groupByFields": [],
+        "hasOptionalGroupByFields": False,
+        "distinctFields": [],
+        "metric": None,
+        "metrics": None,
+        "aggregation": "count",
+        "name": "standard_attributes",
+    },
+    {
+        "query": "source:(apache OR nginx) (@http_referer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
+        "groupByFields": [],
+        "hasOptionalGroupByFields": False,
+        "distinctFields": [],
+        "metric": None,
+        "metrics": None,
+        "aggregation": "count",
+        "name": "non_standard_attributes",
+    },
+]
+new_cases = [
+    {
+        "name": "standard attribute query triggered",
+        "status": "medium",
+        "notifications": [],
+        "condition": "standard_attributes > 0",
+    },
+    {
+        "name": "non standard attribute query triggered",
+        "status": "medium",
+        "notifications": [],
+        "condition": "non_standard_attributes > 0",
+    },
+]
+
+
+@app.get("/autotune/rules/{id}")
+def get_rule(id: str):
+    return (
+        pl.scan_parquet(".data/datadog.parquet")
+        .filter(pl.col.id == id)
+        .collect(streaming=True)
+        .to_dicts()[0]
+    )

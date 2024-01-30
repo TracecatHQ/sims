@@ -27,17 +27,18 @@ Simpler kflow (less api calls):
 """
 from __future__ import annotations
 
-from abc import abstractmethod, ABC
-import boto3
 import inspect
 import textwrap
+from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, TypeVar
 
+import boto3
 from pydantic import BaseModel
-from tracecat.llm import async_openai_call
-from tracecat.logging import standard_logger
+
 from tracecat.credentials import load_lab_credentials
+from tracecat.llm import async_openai_call
+from tracecat.logger import standard_logger
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -118,7 +119,14 @@ class Objective(BaseModel):
 
 
 class User(ABC):
-    def __init__(self, name: str, policy: dict[str, Any], background: str, max_tasks: int | None = None, max_actions: int | None = None):
+    def __init__(
+        self,
+        name: str,
+        policy: dict[str, Any],
+        background: str,
+        max_tasks: int | None = None,
+        max_actions: int | None = None,
+    ):
         self.name = name
         self.policy = policy
         self.background = background
@@ -170,7 +178,6 @@ class PythonBoto3APICall(BaseModel):
 
 
 class AWSUser(User):
-
     async def _make_aws_api_call(self, action: Action):
         error = None
         for _ in range(3):
@@ -200,7 +207,7 @@ class AWSUser(User):
                 client = boto3.client(
                     service,
                     aws_access_key_id=creds[self.name]["aws_access_key_id"],
-                    aws_secret_access_key=creds[self.name]["aws_secret_access_key"]
+                    aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
                 )
                 fn = getattr(client, method)
                 result = fn(**kwargs)
