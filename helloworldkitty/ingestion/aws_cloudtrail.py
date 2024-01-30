@@ -11,13 +11,12 @@ import boto3
 import orjson
 import polars as pl
 from tqdm.contrib.concurrent import thread_map
-
-from helloworldkitty.config import (
+from tracecat.config import (
     LOGS_FILE_TIMESTAMP_FORMAT,
     TRACECAT__LOGS_DIR,
     TRACECAT__TRIAGE_DIR,
 )
-from helloworldkitty.logger import standard_logger
+from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 

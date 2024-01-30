@@ -10,8 +10,7 @@ from pathlib import Path
 import httpx
 import orjson
 import polars as pl
-
-from helloworldkitty.config import TRACECAT__ALERTS_DIR
+from tracecat.config import TRACECAT__ALERTS_DIR
 
 TRACECAT__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
 

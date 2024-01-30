@@ -5,7 +5,7 @@ requires = [
 ]
 
 [project]
-name = "helloworldkitty"
+name = "tracecat"
 description = "Turn Terraform scripts into automated adversary emulation for the Cloud."
 readme = "README.md"
 authors = [
@@ -53,7 +53,7 @@ test = [
 ]
 
 [tool.hatch.version]
-path = "helloworldkitty/__init__.py"
+path = "tracecat/__init__.py"
 
 [tool.ruff]
 exclude = [

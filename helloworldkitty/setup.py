@@ -9,9 +9,8 @@ import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
-from helloworldkitty.config import TRACECAT__LAB_DIR
-from helloworldkitty.logger import standard_logger
+from tracecat.config import TRACECAT__LAB_DIR
+from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 
@@ -19,7 +18,7 @@ logger = standard_logger(__name__, level="INFO")
 def create_ip_whitelist(dir_path: Path | None = None):
     """Write own IP address into whitelist.
 
-    The whitelist is stored in ~/.helloworldkitty.
+    The whitelist is stored in ~/.tracecat.
     """
     logger.info("🚧 Add own IP to whitelist")
     dir_path = dir_path or TRACECAT__LAB_DIR
@@ -36,7 +35,7 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
 
     WARNING: These keys grant access to compromised EC2 instances
     that are deployed for the labs. The compromised SSH keys are
-    stored in ~/.helloworldkitty.
+    stored in ~/.tracecat.
     """
     dir_path = dir_path or TRACECAT__LAB_DIR
 
@@ -73,9 +72,9 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
 
 
 def _path_to_pkg() -> Path:
-    import helloworldkitty
+    import tracecat
 
-    return resources.files(helloworldkitty).parent
+    return resources.files(tracecat).parent
 
 
 def run_terraform(cmds: list[str]):
@@ -169,7 +168,7 @@ def cleanup_lab():
 
 
 if __name__ == "__main__":
-    project_path = _path_to_pkg() / "helloworldkitty/attack/scenarios/codebuild"
+    project_path = _path_to_pkg() / "tracecat/attack/scenarios/codebuild"
     initialize_lab(project_path=project_path)
     deploy_lab()
     # cleanup_lab()

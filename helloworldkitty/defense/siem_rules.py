@@ -3,8 +3,7 @@ from pathlib import Path
 
 import httpx
 import polars as pl
-
-from helloworldkitty.config import TRACECAT__RULES_DIR
+from tracecat.config import TRACECAT__RULES_DIR
 
 TRACECAT__RULES_DIR.mkdir(parents=True, exist_ok=True)
 

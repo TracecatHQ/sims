@@ -3,9 +3,7 @@ from pathlib import Path
 
 LOGS_FILE_TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
 TRACECAT__HOME_DIR = (
-    Path(os.environ.get("TRACECAT__HOME_DIR", "~/.helloworldkitty"))
-    .expanduser()
-    .resolve()
+    Path(os.environ.get("TRACECAT__HOME_DIR", "~/.tracecat")).expanduser().resolve()
 )
 TRACECAT__LAB_DIR = TRACECAT__HOME_DIR / "lab"
 TRACECAT__API_DIR = TRACECAT__HOME_DIR / "api"

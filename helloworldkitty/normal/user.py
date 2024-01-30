@@ -44,10 +44,9 @@ from typing import Any, TypeVar
 
 import boto3
 from pydantic import BaseModel
-
-from helloworldkitty.config import TRACECAT__HOME_DIR
-from helloworldkitty.llm import async_openai_call
-from helloworldkitty.logging import standard_logger
+from tracecat.config import TRACECAT__HOME_DIR
+from tracecat.llm import async_openai_call
+from tracecat.logging import standard_logger
 
 T = TypeVar("T", bound=BaseModel)
 

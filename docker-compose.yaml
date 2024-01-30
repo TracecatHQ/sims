@@ -5,7 +5,7 @@ services:
     image: hashicorp/terraform:latest  # Replace 'latest' with the specific version if needed
     user: "${UID}:${GID}"
     volumes:
-      - ~/.helloworldkitty/lab:/home/terraform
+      - ~/.tracecat/lab:/home/terraform
     working_dir: /home/terraform
     tty: true
     environment:

@@ -12,9 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
-
-from helloworldkitty.config import TRACECAT__API_HOME_DIR, TRACECAT__HOME_DIR
-from helloworldkitty.logger import standard_logger, tail_file
+from tracecat.config import TRACECAT__API_HOME_DIR, TRACECAT__HOME_DIR
+from tracecat.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
 logger = standard_logger(__name__)
