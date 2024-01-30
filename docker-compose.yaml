@@ -1,5 +1,5 @@
 version: '3.8'
-name: "hwk-lab"
+name: "tracecat-lab"
 services:
   terraform:
     image: hashicorp/terraform:latest  # Replace 'latest' with the specific version if needed
