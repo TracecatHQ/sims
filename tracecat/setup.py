@@ -1,7 +1,3 @@
-import os
-import shutil
-import subprocess
-from importlib import resources
 from ipaddress import ip_address
 from pathlib import Path
 
@@ -14,17 +10,6 @@ from tracecat.config import TRACECAT__LAB_DIR
 from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
-
-
-def _path_to_pkg() -> Path:
-    import tracecat
-
-    return resources.files(tracecat).parent
-
-
-def _scenario_to_infra_path(scenario_id: str) -> Path:
-    path = _path_to_pkg() / "terraform" / scenario_id / "infra"
-    return path
 
 
 def create_ip_whitelist(dir_path: Path | None = None):
@@ -81,93 +66,3 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
     pub_file_path = dir_path / "cloudgoat.pub"
     with open(pub_file_path, "wb") as f:
         f.write(public_pem)
-
-
-def run_terraform(cmds: list[str]):
-    subprocess.run(
-        ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
-        cwd=_path_to_pkg(),
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-    )
-
-
-def initialize_lab(scenario_id: str):
-    """Create lab directory and spin-up Terraform in Docker.
-
-    Parameters
-    ----------
-    scenario_id : str
-    """
-
-    logger.info("🐱 Create new lab directory")
-    TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Shared configs
-    create_ip_whitelist()
-    create_compromised_ssh_keys()
-
-    # Create Terraform on Docker
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Create Terraform in Docker container")
-    subprocess.run(
-        ["docker", "compose", "-f", _path_to_pkg() / "docker-compose.yaml", "up", "-d"],
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-    )
-
-    # Copy Terraform project into labs
-    logger.info("🚧 Copy Terraform project into lab")
-    project_path = _scenario_to_infra_path(scenario_id=scenario_id)
-    shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
-
-    logger.info("🚧 Initialize Terraform project")
-    run_terraform(["init"])
-
-
-def deploy_lab() -> Path:
-    """Deploy lab infrastructure ready for attacks.
-
-    Assumes lab project files already configured and Terraform in Docker is available.
-    """
-    # Terraform plan (safety)
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Run Terraform plan")
-    run_terraform(["plan"])
-
-    # Terraform deploy
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Run Terraform apply")
-    run_terraform(["apply"])
-
-
-class FailedTerraformDestroy(Exception):
-    pass
-
-
-def cleanup_lab():
-    """Destroy live infrastructure and stop Terraform Docker container.
-
-    Raises
-    ------
-    FailedTerraformDestory if `terraform destroy` was unsuccessful.
-    Container is not stopped in this case.
-    """
-    # Terraform destroy
-    logger.info("🧹 Destroy lab infrastructure")
-    run_terraform(["destroy"])
-
-    # Delete labs directory
-    logger.info("🧹 Delete lab directory")
-    try:
-        shutil.rmtree(TRACECAT__LAB_DIR)
-    except FileNotFoundError:
-        logger.info("❗ No lab directory found")
-
-    # Delete docker containers
-    logger.info("🧹 Spin down Terraform in Docker")
-    subprocess.run(
-        ["docker", "compose", "down"],
-        cwd=_path_to_pkg(),
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-    )
-
-    logger.info("✅ Lab cleanup complete. What will you break next?")
