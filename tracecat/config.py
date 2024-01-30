@@ -1,5 +1,5 @@
 import os
-import resources
+from importlib import resources
 from pathlib import Path
 
 LOGS_FILE_TIMESTAMP_FORMAT = "%Y%m%d%H%M%S"
