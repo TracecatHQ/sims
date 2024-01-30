@@ -47,8 +47,11 @@ from tracecat.credentials import load_lab_credentials
 from tracecat.llm import async_openai_call
 
 
+TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 TRACECAT__LAB_DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
 TRACECAT__LAB_ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
+TRACECAT__LAB_DEBUG_LOGS_PATH.touch()
+TRACECAT__LAB_ACTIONS_LOGS_PATH.touch()
 
 
 T = TypeVar("T", bound=BaseModel)

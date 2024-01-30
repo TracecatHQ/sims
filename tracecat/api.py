@@ -29,6 +29,7 @@ load_dotenv(find_dotenv())
 logger = standard_logger(__name__)
 
 
+TRACECAT__API_DIR.mkdir(parents=True, exist_ok=True)
 API_CALL_STATISTICS_FILE_PATH = TRACECAT__API_DIR / "api_calls.json"
 ACTION_STATISTICS_FILE_PATH = TRACECAT__API_DIR / "action_statistics.json"
 STATISTICS_FILE_PATH = TRACECAT__API_DIR / "statistics.json"
