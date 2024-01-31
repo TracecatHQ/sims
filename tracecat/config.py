@@ -15,6 +15,9 @@ TRACECAT__LOGS_DIR = TRACECAT__HOME_DIR / "logs"  # Nice clean normalized logs
 TRACECAT__DOCKER_COMPOSE_NAME = "tracecat-lab"
 TRACECAT__DOCKER_WORKDIR = "/home/terraform/lab"
 
+TRACECAT__TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
+TRACECAT__LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def path_to_pkg() -> Path:
     import tracecat
