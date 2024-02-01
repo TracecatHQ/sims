@@ -88,13 +88,20 @@ def _list_all_objects_under_prefix(
             for dt in date_range
         )
         # List all object names that start with prefixes
+        start = min(date_range)
+        end = max(date_range)
         region_object_names = thread_map(
             partial(_list_objects_under_prefix, bucket_name=bucket_name),
             prefixes,
-            desc="📂 Enumerate AWS CloudTrail logs",
+            desc=f"📂 Enumerate AWS CloudTrail logs between [{start}, {end}]",
         )
         nested_object_names.extend(region_object_names)
     object_names = list(chain.from_iterable(nested_object_names))
+    n_objects = len(object_names)
+    if n_objects > 1:
+        logger.info("Found %s log files", n_objects)
+    else:
+        raise ValueError(f"⚠️ No logs found between [{start}, {end}]")
     return object_names
 
 
@@ -169,9 +176,12 @@ def load_cloudtrail_logs(
         account_id,
         regions,
     )
+    # NOTE: We add a 1 day buffer as a defensive
+    # measure to deal with possible date spillovers
+    # Not the best performance, but it's safer.
     date_range = pl.date_range(
-        start=start.date(),
-        end=end.date(),
+        start=start.date() - timedelta(days=1),  # Defensive
+        end=end.date() + timedelta(days=1),  # Defensive
         interval=timedelta(days=1),
         eager=True,
     )
