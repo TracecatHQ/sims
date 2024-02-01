@@ -26,15 +26,8 @@ class JsonFormatter(logging.Formatter):
 
     _date_format = "%Y-%m-%dT%H:%M:%SZ"
 
-    def _get_json_msg(self, record: logging.LogRecord) -> str:
-        if isinstance(record.msg, dict):
-            return json.dumps(record.msg)
-        if isinstance(record.msg, BaseModel):
-            return record.msg.model_dump_json()
-        raise ValueError("Log message must be JSON serializable.")
-
     def format(self, record: logging.LogRecord):
-        model_dict = self._get_json_msg(record)
+        model_dict = record.msg.model_dump()
         model_dict["time"] = self.formatTime(record, self._date_format)
         return json.dumps(model_dict)
 

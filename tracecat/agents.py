@@ -140,6 +140,7 @@ class User(ABC):
         background: str,
         max_tasks: int | None = None,
         max_actions: int | None = None,
+        mock_actions: bool = False
     ):
         self.name = name
         self.policy = policy
@@ -148,6 +149,7 @@ class User(ABC):
         self.max_actions = max_actions or 10
         self.tasks = deque()
         self.objectives: list[str] = []
+        self.mock_actions = mock_actions
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
@@ -168,6 +170,18 @@ class User(ABC):
     async def perform_task(self, task: Task):
         for action in task.actions:
             await self.perform_action(action)
+
+    def _perform_action(self, action: Action):
+        return (self._mock_action if self.mock_actions else self._make_api_call)(action)
+
+    async def _mock_action(self, action: Action):
+        """Mock an action by logging it to a file."""
+        self.logger.info(f"Mocking action: {action.name}...")
+        await asyncio.sleep(1)
+
+    @abstractmethod
+    async def _make_api_call(self, action: Action, max_retries: int = 3) -> Objective:
+        pass
 
     async def perform_action(self, action: Action):
         # Add random noise to action.duration
@@ -235,7 +249,8 @@ class PythonBoto3APICall(BaseModel):
 
 class AWSUser(User):
 
-    async def _make_aws_api_call(self, action: Action, max_retries: int = 3):
+    async def _make_api_call(self, action: Action, max_retries: int = 3):
+        """Make AWS Boto3 API call."""
         error = None
         for _ in range(max_retries):
             system_context = "You are an expert at performing AWS API calls."
