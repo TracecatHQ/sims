@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-import backoff
 import orjson
 from dotenv import find_dotenv, load_dotenv
 from openai import AsyncOpenAI, OpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tracecat.logger import standard_logger
 
@@ -20,7 +20,10 @@ MAX_RETRIES = 3
 DEFAULT_SYSTEM_CONTEXT = "You are an expert threat intelligence researcher, detection and response engineer, and threat hunter."
 
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=MAX_RETRIES)
+@retry(
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+)
 def openai_call(
     prompt: str,
     model: MODEL_T = "gpt-4-0125-preview",
@@ -67,7 +70,10 @@ def openai_call(
 async_client = AsyncOpenAI()
 
 
-@backoff.on_exception(backoff.expo, Exception, max_tries=MAX_RETRIES)
+@retry(
+    stop=stop_after_attempt(MAX_RETRIES),
+    wait=wait_exponential(multiplier=1, min=4, max=10),
+)
 async def async_openai_call(
     prompt: str,
     model: MODEL_T = "gpt-4-0125-preview",

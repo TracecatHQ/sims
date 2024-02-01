@@ -23,7 +23,6 @@ dynamic = [
   "version",
 ]
 dependencies = [
-  "backoff",
   "connectorx",
   "cryptography",
   "docker",
