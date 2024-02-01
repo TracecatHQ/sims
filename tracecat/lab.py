@@ -247,9 +247,12 @@ async def run_lab(
 
     # NOTE: Very crude approximation...will need a place
     # to store state of start and time detonation times.
+    # NOTE: The more buffer the safer: at least 6 hours.
+    # It's easier to deal with duplicate events downstream
+    # than no events at all...
     logger.info("🔬 Evaluate lab simulation")
-    buffer_time = buffer_time or timedelta(seconds=timeout + 3600)
-    now = datetime.now().replace(minute=0, second=0, microsecond=0)
+    buffer_time = buffer_time or timedelta(seconds=timeout + 21_600)
+    now = datetime.now().replace(second=0, microsecond=0)
     evaluate_lab(
         start=now - buffer_time,
         end=now + buffer_time,
