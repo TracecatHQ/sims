@@ -141,6 +141,7 @@ def get_lab():
 async def create_lab(
     scenario_id: str,
     background_tasks: BackgroundTasks,
+    skip_simulation: bool = False,
     timeout: int | None = None,
     delayed_seconds: int | None = None,
     max_tasks: int | None = None,
@@ -158,6 +159,7 @@ async def create_lab(
     background_tasks.add_task(
         run_lab,
         scenario_id=scenario_id,
+        skip_simulation=skip_simulation,
         timeout=timeout,
         delayed_seconds=delayed_seconds,
         max_tasks=max_tasks,
