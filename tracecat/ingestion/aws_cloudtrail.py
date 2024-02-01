@@ -148,9 +148,9 @@ def _load_cloudtrail_ndjson(
     timestamp = datetime.utcnow().strftime(LOGS_FILE_TIMESTAMP_FORMAT)
     logs_file_path = (AWS_CLOUDTRAIL__LOGS_DIR / timestamp).with_suffix(".parquet")
     raw_logs = pl.scan_ndjson(ndjson_file_paths, infer_schema_length=None)
-    logger.info("🔄 Filter for events between [%s, %s]", start, end)
-    logger.info("🔄 Filter for malicious IDs: %s", malicious_ids)
-    logger.info("🔄 Filter for normal IDs: %s", normal_ids)
+    logger.info("🗂️ Filter for events between [%s, %s]", start, end)
+    logger.info("🗂️ Filter for malicious IDs: %s", malicious_ids)
+    logger.info("🗂️ Filter for normal IDs: %s", normal_ids)
     logs = (
         # NOTE: This might cause memory to blow up
         raw_logs.select(SELECTED_FIELDS)
