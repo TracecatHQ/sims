@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
+import numpy as np
 import polars as pl
 from dotenv import find_dotenv, load_dotenv
-from datetime import timedelta
-from fastapi import Depends, FastAPI, HTTPException, BackgroundTasks
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
@@ -56,7 +57,6 @@ async def tail_file_handler():
 
 
 async def update_stats_handler():
-
     while True:
         item = await TRACECAT__LOG_QUEUES["statistics"].get()
         item = json.loads(item)
@@ -169,7 +169,7 @@ async def create_lab(
         normal_ids=normal_ids,
         task_retries=task_retries,
         buffer_time=buffer_time,
-        triage=triage
+        triage=triage,
     )
     return {"message": "Lab created"}
 
@@ -267,6 +267,10 @@ async def stream_events_distribution(id: Annotated[str, Depends(validate_events_
     return calls
 
 
+# TODO: Change this out for a real implementation
+TEMPORARY_AUTOTUNE_DB_PATH = Path(".data/datadog.parquet").expanduser()
+
+
 @app.get("/autotune/banner")
 def get_autotune_banner():
     return [
@@ -278,10 +282,44 @@ def get_autotune_banner():
 
 @app.get("/autotune/rules/")
 def get_all_rules():
-    import numpy as np
-
+    new_query = [
+        {
+            "query": "source:(apache OR nginx) (@http.referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http.user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
+            "groupByFields": [],
+            "hasOptionalGroupByFields": False,
+            "distinctFields": [],
+            "metric": None,
+            "metrics": None,
+            "aggregation": "count",
+            "name": "standard_attributes",
+        },
+        {
+            "query": "source:(apache OR nginx) (@http_referer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
+            "groupByFields": [],
+            "hasOptionalGroupByFields": False,
+            "distinctFields": [],
+            "metric": None,
+            "metrics": None,
+            "aggregation": "count",
+            "name": "non_standard_attributes",
+        },
+    ]
+    new_cases = [
+        {
+            "name": "standard attribute query triggered",
+            "status": "medium",
+            "notifications": [],
+            "condition": "standard_attributes > 0",
+        },
+        {
+            "name": "non standard attribute query triggered",
+            "status": "medium",
+            "notifications": [],
+            "condition": "non_standard_attributes > 0",
+        },
+    ]
     df = (
-        pl.scan_parquet(".data/datadog.parquet")
+        pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
         .drop_nulls()
         .select(
             [
@@ -299,61 +337,31 @@ def get_all_rules():
     )
     return (
         df.lazy()
+        .rename({"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"})
         .with_columns(
             score=np.random.randint(0, 100, df.height),
             status=pl.lit("active"),
             timeSaved=np.random.randint(30, 100, df.height),
             severity=np.random.choice(["low", "medium", "high"], df.height),
+            newQueries=pl.lit(new_query),
+            newCases=pl.lit(new_cases),
         )
-        .rename({"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"})
         .collect(streaming=True)
         .to_dicts()
     )
 
 
-new_query = [
-    {
-        "query": "source:(apache OR nginx) (@http.referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http.user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
-        "groupByFields": [],
-        "hasOptionalGroupByFields": False,
-        "distinctFields": [],
-        "metric": None,
-        "metrics": None,
-        "aggregation": "count",
-        "name": "standard_attributes",
-    },
-    {
-        "query": "source:(apache OR nginx) (@http_referer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
-        "groupByFields": [],
-        "hasOptionalGroupByFields": False,
-        "distinctFields": [],
-        "metric": None,
-        "metrics": None,
-        "aggregation": "count",
-        "name": "non_standard_attributes",
-    },
-]
-new_cases = [
-    {
-        "name": "standard attribute query triggered",
-        "status": "medium",
-        "notifications": [],
-        "condition": "standard_attributes > 0",
-    },
-    {
-        "name": "non standard attribute query triggered",
-        "status": "medium",
-        "notifications": [],
-        "condition": "non_standard_attributes > 0",
-    },
-]
-
-
 @app.get("/autotune/rules/{id}")
 def get_rule(id: str):
     return (
-        pl.scan_parquet(".data/datadog.parquet")
+        pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
         .filter(pl.col.id == id)
+        .with_columns(
+            score=pl.lit(np.randint(0, 100)),
+            status=pl.lit("active"),
+            timeSaved=pl.lit(np.randint(0, 100)),
+            severity=np.random.choice(["low", "medium", "high"]),
+        )
         .collect(streaming=True)
         .to_dicts()[0]
     )
