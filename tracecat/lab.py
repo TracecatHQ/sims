@@ -21,7 +21,7 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_triaged_cloudtrail_logs,
 )
 from tracecat.logger import standard_logger
-from tracecat.scenarios import SCENARIO_ID_TO_RUN
+from tracecat.scenarios import SCENARIO_ID_TO_SIMULATION
 from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
 from tracecat.credentials import get_normal_ids, get_malicious_ids
 
@@ -130,7 +130,7 @@ def initialize_lab(scenario_id: str):
     _deploy_lab()
 
 
-async def detonate_lab(
+async def simulate_lab(
     scenario_id: str,
     timeout: int | None = None,
     delayed_seconds: int | None = None,
@@ -142,13 +142,13 @@ async def detonate_lab(
     delayed_seconds = delayed_seconds or 60
 
     try:
-        run = SCENARIO_ID_TO_RUN[scenario_id]
+        simulate = SCENARIO_ID_TO_SIMULATION[scenario_id]
     except KeyError as err:
         raise KeyError("Scenario ID not found: %s", scenario_id) from err
 
     try:
         await asyncio.wait_for(
-            run(
+            simulate(
                 delay_seconds=delayed_seconds,
                 max_tasks=max_tasks,
                 max_actions=max_actions,
@@ -198,25 +198,9 @@ def evaluate_lab(
     compute_confusion_matrix(correlated_alerts)
 
 
-@contextmanager
-def track_time():
-    class Timer:
-        def __init__(self):
-            self.start_time = datetime.now()
-            self.end_time = None
-            self.elapsed = None
-
-        def stop(self):
-            self.end_time = datetime.now()
-            self.elapsed = self.end_time - self.start_time
-
-    timer = Timer()
-    yield timer
-    timer.stop()
-
-
 async def run_lab(
     scenario_id: str,
+    skip_simulation: bool = False,
     timeout: int | None = None,
     delayed_seconds: int | None = None,
     max_tasks: int | None = None,
@@ -231,30 +215,42 @@ async def run_lab(
     triage: bool = False,
 ) -> Path:
     """Run lab and return path to lab results.
+
+    Parameters
+    ----------
+    skip_run : bool
+        Defaults to False. If True, assumes simulation is complete
+        and skips straight to evaluation.
     """
-    task_retries = task_retries or 2
-    _retry = retry(stop=stop_after_attempt(task_retries))
-    task_queue = [
-        (initialize_lab, {"scenario_id": scenario_id}),
-        (detonate_lab, {
-            "scenario_id": scenario_id,
-            "timeout": timeout,
-            "delayed_seconds": delayed_seconds,
-            "max_tasks": max_tasks,
-            "max_actions": max_actions}
-        ),
-    ]
-    with track_time() as timer:
+    timeout = timeout or 300
+    if not skip_simulation:
+        logger.info("🎲 Run lab simulation")
+        task_retries = task_retries or 2
+        _retry = retry(stop=stop_after_attempt(task_retries))
+        task_queue = [
+            (initialize_lab, {"scenario_id": scenario_id}),
+            (simulate_lab, {
+                "scenario_id": scenario_id,
+                "timeout": timeout,
+                "delayed_seconds": delayed_seconds,
+                "max_tasks": max_tasks,
+                "max_actions": max_actions}
+            ),
+        ]
         for task, params in task_queue:
             if asyncio.iscoroutinefunction(task):
                 await _retry(task)(**params)
             else:
                 _retry(task)(**params)
 
-    buffer_time = buffer_time or timedelta(hours=1)
+    # NOTE: Very crude approximation...will need a place
+    # to store state of start and time detonation times.
+    logger.info("🔬 Evaluate lab simulation")
+    buffer_time = buffer_time or timedelta(seconds=timeout + 3600)
+    now = datetime.now().replace(minute=0, second=0, microsecond=0)
     evaluate_lab(
-        start=timer.start_time - buffer_time,
-        end=timer.end_time + buffer_time,
+        start=now - buffer_time,
+        end=now + buffer_time,
         bucket_name=bucket_name,
         regions=regions,
         account_id=account_id,

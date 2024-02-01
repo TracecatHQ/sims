@@ -1,6 +1,6 @@
-from tracecat.scenarios.codebuild.run import run as codebuild_run
+from tracecat.scenarios.codebuild.run import simulate as simulate_codebuild
 
 
-SCENARIO_ID_TO_RUN = {
-    "codebuild": codebuild_run
+SCENARIO_ID_TO_SIMULATION = {
+    "codebuild": simulate_codebuild
 }
