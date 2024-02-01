@@ -27,6 +27,8 @@ AWS_CLOUDTRAIL__LOGS_DIR = TRACECAT__LOGS_DIR / "aws_cloudtrail"
 AWS_CLOUDTRAIL__TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
+AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
 SELECTED_FIELDS = [
     # Normalized fields
     pl.col("userIdentity").str.json_path_match("$.arn").alias("arn"),
@@ -38,9 +40,9 @@ SELECTED_FIELDS = [
     "eventTime",
     "eventName",
     "eventSource",
+    "awsRegion",
     "requestParameters",
     "responseElements",
-    "awsRegion",
 ]
 NESTED_FIELDS = [
     "userIdentity",
@@ -145,17 +147,24 @@ def _load_cloudtrail_ndjson(
     # NOTE: To save space we only keep the minimum number of fields
     timestamp = datetime.utcnow().strftime(LOGS_FILE_TIMESTAMP_FORMAT)
     logs_file_path = (AWS_CLOUDTRAIL__LOGS_DIR / timestamp).with_suffix(".parquet")
-    (
+    raw_logs = pl.scan_ndjson(ndjson_file_paths, infer_schema_length=None)
+    logger.info("🔄 Filter for events between [%s, %s]", start, end)
+    logger.info("🔄 Filter for malicious IDs: %s", malicious_ids)
+    logger.info("🔄 Filter for normal IDs: %s", normal_ids)
+    logs = (
         # NOTE: This might cause memory to blow up
-        pl.scan_ndjson(ndjson_file_paths, infer_schema_length=None)
-        .select(SELECTED_FIELDS)
-        .filter(pl.col("eventTime").str.strftime().is_between(start, end))
+        raw_logs.select(SELECTED_FIELDS)
+        .filter(pl.col("eventTime").str.strptime(
+            format=AWS_CLOUDTRAIL__EVENT_TIME_FORMAT,
+            dtype=pl.Datetime
+        ).is_between(start, end))
         .filter(pl.col("accessKeyId").is_in(malicious_ids + normal_ids))
         # Defensive to avoid concats with mismatched struct column schemas
         .select(pl.all().cast(pl.Utf8))
         .collect(streaming=True)
-        .write_parquet(logs_file_path)
     )
+    logger.info("💾 Write AWS CloudTrail logs to: %s", logs_file_path)
+    logs.write_parquet(logs_file_path)
     return logs_file_path
 
 
