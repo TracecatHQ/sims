@@ -362,7 +362,7 @@ def get_all_rules():
         .with_columns(
             score=np.random.randint(0, 100, df.height),
             status=pl.lit("active"),
-            timeSaved=np.random.randint(30, 100, df.height),
+            timeSavable=np.random.randint(30, 100, df.height),
             severity=np.random.choice(["low", "medium", "high"], df.height),
             newQueries=pl.lit(new_query),
             newCases=pl.lit(new_cases),
@@ -380,7 +380,7 @@ def get_rule(id: str):
         .with_columns(
             score=pl.lit(np.randint(0, 100)),
             status=pl.lit("active"),
-            timeSaved=pl.lit(np.randint(0, 100)),
+            timeSavable=pl.lit(np.randint(0, 100)),
             severity=np.random.choice(["low", "medium", "high"]),
         )
         .collect(streaming=True)
