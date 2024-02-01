@@ -29,12 +29,23 @@ from tracecat.credentials import get_normal_ids, get_malicious_ids
 logger = standard_logger(__name__, level="INFO")
 
 
+class TerraformRunError(Exception):
+    pass
+
+
 def _run_terraform(cmds: list[str]):
-    subprocess.run(
+    process = subprocess.run(
         ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
         cwd=path_to_pkg(),
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True  # Ensure the output is returned as a string
     )
+    print(process.stdout)
+    print(process.stderr)
+    if "Error" in process.stdout or "Error" in process.stderr:
+        raise TerraformRunError(process.stdout)
 
 
 def _scenario_to_infra_path(scenario_id: str) -> Path:
@@ -77,12 +88,12 @@ def _deploy_lab() -> Path:
     # Terraform plan (safety)
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform plan")
-    _run_terraform(["plan"])
+    _run_terraform(["plan", "-out=plan.tfplan"])
 
     # Terraform deploy
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform apply")
-    _run_terraform(["apply"])
+    _run_terraform(["apply", "-auto-approve", "plan.tfplan"])
 
 
 def initialize_lab(scenario_id: str):
@@ -220,10 +231,8 @@ async def run_lab(
     triage: bool = False,
 ) -> Path:
     """Run lab and return path to lab results.
-
-    Lab results contain th
     """
-    task_retries = task_retries or 3
+    task_retries = task_retries or 2
     _retry = retry(stop=stop_after_attempt(task_retries))
     task_queue = [
         (initialize_lab, {"scenario_id": scenario_id}),
@@ -259,7 +268,7 @@ class FailedTerraformDestroy(Exception):
     pass
 
 
-def clean_up_lab():
+def clean_up_lab(force: bool = False):
     """Destroy live infrastructure and stop Terraform Docker container.
 
     Raises
@@ -271,21 +280,29 @@ def clean_up_lab():
     logger.info("🧹 Destroy lab infrastructure")
     _run_terraform(["destroy"])
 
-    # Delete labs directory
-    logger.info("🧹 Delete lab directory")
-    try:
-        shutil.rmtree(TRACECAT__LAB_DIR)
-    except FileNotFoundError:
-        logger.info("❗ No lab directory found")
+    # NOTE: ONLY SPIN DOWN DOCKER AND
+    # DELETE LAB FILES (which includes tfstate)
+    # IF TERRAFORM DESTORY IS SUCCESSFUL
+    if force:
+        logger.info("🧹 Spin down Terraform in Docker")
+        subprocess.run(
+            ["docker", "compose", "down"],
+            cwd=path_to_pkg(),
+            env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+        )
 
-    # Delete docker containers
-    logger.info("🧹 Spin down Terraform in Docker")
-    subprocess.run(
-        ["docker", "compose", "down"],
-        cwd=path_to_pkg(),
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-    )
-    # Remove triaged logs
-    shutil.rmtree(TRACECAT__TRIAGE_DIR)
+        # Remove triaged logs
+        logger.info("🧹 Delete triaged logs")
+        shutil.rmtree(TRACECAT__TRIAGE_DIR)
 
-    logger.info("✅ Lab cleanup complete. What will you break next?")
+        logger.info("🧹 Delete lab directory")
+        try:
+            shutil.rmtree(TRACECAT__LAB_DIR)
+        except FileNotFoundError:
+            logger.info("❗ No lab directory found")
+        logger.info("✅ Lab cleanup complete. What will you break next?")
+    else:
+        logger.info(
+            "✅🛎️ Infrastructure cleanup complete."
+            " Rerun clean up with `force=True` to destroy remaining artifacts."
+        )
