@@ -173,6 +173,8 @@ def evaluate_lab(
     malicious_ids = get_malicious_ids()
     if triage:
         logs_source = load_triaged_cloudtrail_logs(
+            start=start,
+            end=end,
             malicious_ids=malicious_ids,
             normal_ids=normal_ids,
         )
