@@ -193,8 +193,6 @@ def evaluate_lab(
     correlated_alerts = correlate_alerts_with_logs(
         alerts_source=alerts_source,
         logs_source=logs_source,
-        start=start,
-        end=end,
         malicious_ids=malicious_ids,
     )
     compute_confusion_matrix(correlated_alerts)
