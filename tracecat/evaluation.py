@@ -25,7 +25,7 @@ def correlate_alerts_with_logs(
         .select(["accessKeyId", "eventTime"])
         .join(
             pl.scan_parquet(alerts_source).select(
-                ["accessKeyId", "eventTime", "severity", "rule_id"]
+                ["accessKeyId", "eventTime", "severity", "rule_id", "rule_name"]
             ),
             on=["accessKeyId", "eventTime"],
             how="left",
@@ -42,7 +42,8 @@ def compute_confusion_matrix(correlated_alerts: pl.DataFrame) -> pl.DataFrame:
     confusion_matrix = (
         correlated_alerts.lazy()
         .with_columns(has_alert=pl.col("rule_id").is_not_null())
-        .select(
+        .groupby(["rule_id", "rule_name"])
+        .agg(
             true_positive=(pl.col("is_attack") & pl.col("has_alert")).sum(),
             false_positive=(~pl.col("is_attack") & pl.col("has_alert")).sum(),
             true_negative=(~pl.col("is_attack") & ~pl.col("has_alert")).sum(),
@@ -54,5 +55,26 @@ def compute_confusion_matrix(correlated_alerts: pl.DataFrame) -> pl.DataFrame:
     return confusion_matrix
 
 
-if __name__ == "__main__":
-    pass
+def compute_event_counts(logs_source: Path, eager: bool = False) -> pl.DataFrame | pl.LazyFrame:
+    counts = (
+        pl.scan_parquet(logs_source)
+        .select(pl.col("eventName").value_counts())
+        .unnest("eventName")
+    )
+    if eager:
+        counts = counts.collect()
+    return counts
+
+
+def compute_event_percentage_counts(
+    logs_source: Path,
+    include_absolute: bool = False
+) -> pl.DataFrame:
+    counts = (
+        compute_event_counts(logs_source=logs_source)
+        .with_columns(percentage_count=pl.col("count") / pl.col("count").sum())
+    )
+    if not include_absolute:
+        counts = counts.drop("count")
+    counts = counts.collect()
+    return counts
