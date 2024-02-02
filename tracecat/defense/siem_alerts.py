@@ -12,6 +12,9 @@ import orjson
 import polars as pl
 
 from tracecat.config import TRACECAT__ALERTS_DIR
+from tracecat.logger import standard_logger
+
+logger = standard_logger(__name__, level="INFO")
 
 TRACECAT__ALERTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -41,6 +44,7 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
         },
         "page": {"limit": limit},
     }
+    logger.info("🐶 Download Datadog alerts between [%s, %s]", start, end)
     with httpx.Client() as client:
         rsp = client.post(url, headers=headers, data=orjson.dumps(body))
         rsp.raise_for_status()
@@ -84,6 +88,8 @@ def get_datadog_alerts(start: datetime, end: datetime, limit: int = 1000) -> Pat
                 .alias("rule_name"),
             ]
         )
+        # NOTE: There are some alerts that cover multiple access keys
+        .explode("accessKeyId")
         .write_parquet(path)
     )
     return path
