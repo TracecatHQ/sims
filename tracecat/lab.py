@@ -213,12 +213,17 @@ def evaluate_lab(
             normal_ids=normal_ids,
         )
     alerts_source = get_datadog_alerts(start=start, end=end)
+    logger.info("🧲 Correlate alerts with logs")
     correlated_alerts = correlate_alerts_with_logs(
         alerts_source=alerts_source,
         logs_source=logs_source,
         malicious_ids=malicious_ids,
     )
+
+    logger.info("🎯 Score detection rules")
     confusion_matrix = compute_confusion_matrix(correlated_alerts=correlated_alerts)
+    logger.info("🎯 Final detection rule scores: %s", confusion_matrix)
+
     logger.info("🔢 Compute event counts")
     event_counts = compute_event_percentage_counts(
         logs_source=logs_source,

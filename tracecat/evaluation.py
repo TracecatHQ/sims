@@ -1,12 +1,8 @@
 """Functions to evaluate fidelity of SIEM alerts."""
 
-from datetime import datetime
 from pathlib import Path
 
 import polars as pl
-from tracecat.logger import standard_logger
-
-logger = standard_logger(__name__, level="INFO")
 
 
 def label_malicious_events(events: pl.LazyFrame, malicious_ids: list[str]):
@@ -19,7 +15,6 @@ def correlate_alerts_with_logs(
     logs_source: Path,
     malicious_ids: list[str],
 ) -> pl.DataFrame:
-    logger.info("🧲 Correlate alerts with logs")
     correlated_alerts = (
         pl.scan_parquet(logs_source)
         .select(["accessKeyId", "eventTime"])
@@ -38,7 +33,6 @@ def correlate_alerts_with_logs(
 
 def compute_confusion_matrix(correlated_alerts: pl.DataFrame) -> pl.DataFrame:
     # Joins alerts to logs by nearest key
-    logger.info("🎯 Score detection rules")
     confusion_matrix = (
         correlated_alerts.lazy()
         .with_columns(has_alert=pl.col("rule_id").is_not_null())
@@ -51,7 +45,6 @@ def compute_confusion_matrix(correlated_alerts: pl.DataFrame) -> pl.DataFrame:
         )
         .collect(streaming=True)
     )
-    logger.info("🎯 Final detection rule scores: %s", confusion_matrix)
     return confusion_matrix
 
 
