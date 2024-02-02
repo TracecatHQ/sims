@@ -68,8 +68,8 @@ def _list_objects_under_prefix(prefix: str, bucket_name: str) -> list[str]:
 
 
 def _list_all_objects_under_prefix(
-    bucket_name: str,
     account_id: str,
+    bucket_name: str,
     date_range: pl.Series,
     regions: list[str],
 ) -> list[str]:
@@ -169,17 +169,14 @@ def _load_cloudtrail_ndjson(
 
 
 def load_cloudtrail_logs(
+    account_id: str,
     bucket_name: str,
+    regions: list[str],
     start: datetime,
     end: datetime,
     malicious_ids: list[str],
     normal_ids: list[str],
-    regions: list[str] | None = None,
-    account_id: str | None = None,
 ) -> Path:
-    sts_client = boto3.client("sts")
-    account_id = account_id or sts_client.get_caller_identity()["Account"]
-    regions = regions or [os.environ["AWS_DEFAULT_REGION"]]
     logger.info(
         "📂 Download AWS CloudTrail logs from: account_id=%s, regions=%s",
         account_id,
@@ -195,8 +192,8 @@ def load_cloudtrail_logs(
         eager=True,
     )
     object_names = _list_all_objects_under_prefix(
-        bucket_name=bucket_name,
         account_id=account_id,
+        bucket_name=bucket_name,
         date_range=date_range,
         regions=regions,
     )
