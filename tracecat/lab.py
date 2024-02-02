@@ -57,20 +57,6 @@ def _scenario_to_infra_path(scenario_id: str) -> Path:
     return path
 
 
-class LabStatus(StrEnum):
-    cold = "cold"  # No lab
-    warm = "warm"  # Lab with infrastructure
-    running = "running"  # Ongoing simulation
-    complete = "completed"  # Simutation complete
-    failed = "failed"  # Simutation complete
-
-
-class LabInformation(BaseModel):
-    status: LabStatus
-    results: dict | None = None
-    error: str | None = None
-
-
 def check_lab():
     # Cold: Missing or empty directory
     # Warm:
@@ -272,14 +258,7 @@ async def run_lab(
     delayed_seconds: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
-    bucket_name: str | None = None,
-    regions: list[str] | None = None,
-    account_id: str = None,
-    malicious_ids: list[str] | None = None,
-    normal_ids: list[str] | None = None,
     task_retries: int | None = None,
-    buffer_time: timedelta | None = None,
-    triage: bool = False,
 ) -> Path:
     """Run lab and return path to lab results.
 
@@ -309,26 +288,6 @@ async def run_lab(
                 await _retry(task)(**params)
             else:
                 _retry(task)(**params)
-
-    # NOTE: Very crude approximation...will need a place
-    # to store state of start and time detonation times.
-    # NOTE: The more buffer the safer: at least 6 hours.
-    # It's easier to deal with duplicate events downstream
-    # than no events at all...
-    logger.info("🔬 Evaluate lab simulation")
-    buffer_time = buffer_time or timedelta(seconds=timeout + 21_600)
-    now = datetime.now().replace(second=0, microsecond=0)
-    evaluate_lab(
-        scenario_id=scenario_id,
-        start=now - buffer_time,
-        end=now + buffer_time,
-        account_id=account_id,
-        bucket_name=bucket_name,
-        regions=regions,
-        malicious_ids=malicious_ids,
-        normal_ids=normal_ids,
-        triage=triage
-    )
 
 
 class FailedTerraformDestroy(Exception):
