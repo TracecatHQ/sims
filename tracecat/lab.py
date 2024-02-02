@@ -1,8 +1,8 @@
 import asyncio
+import boto3
 import os
 import shutil
 import subprocess
-from contextlib import contextmanager
 from tenacity import retry, stop_after_attempt
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -15,6 +15,7 @@ from tracecat.defense.siem_alerts import get_datadog_alerts
 from tracecat.evaluation import (
     compute_confusion_matrix,
     correlate_alerts_with_logs,
+    compute_event_percentage_counts
 )
 from tracecat.ingestion.aws_cloudtrail import (
     load_cloudtrail_logs,
@@ -159,18 +160,41 @@ async def simulate_lab(
         logger.info("✅ Lab timed out successfully after %s seconds", timeout)
 
 
+class LabUsers(BaseModel):
+    names: list[str]
+    is_compromised: list[bool]
+    personas: list[dict]
+
+class LabResults(BaseModel):
+    start: datetime
+    end: datetime
+    account_id: str
+    bucket_name: str
+    regions: list[str]
+    rule_scores: list[dict]  # Confusion matrix
+    event_counts: list[dict]  # Event frequencies
+    # users: list[str]
+    # compromised_users: list[str]
+    # user_personas: list[dict]
+    # user_policies: list[dict]
+
+
 def evaluate_lab(
     start: datetime,
     end: datetime,
+    account_id: str = None,
     bucket_name: str | None = None,
     regions: list[str] | None = None,
-    account_id: str = None,
     malicious_ids: list[str] | None = None,
     normal_ids: list[str] | None = None,
     triage: bool = False,
 ):
     normal_ids = get_normal_ids()
     malicious_ids = get_malicious_ids()
+    sts_client = boto3.client("sts")
+    account_id = account_id or sts_client.get_caller_identity()["Account"]
+    bucket_name = bucket_name or os.environ["AWS_CLOUDTRAIL__BUCKET_NAME"]
+    regions = regions or [os.environ["AWS_DEFAULT_REGION"]]
     if triage:
         logs_source = load_triaged_cloudtrail_logs(
             start=start,
@@ -179,15 +203,14 @@ def evaluate_lab(
             normal_ids=normal_ids,
         )
     else:
-        bucket_name = bucket_name or os.environ["AWS_CLOUDTRAIL__BUCKET_NAME"]
         logs_source = load_cloudtrail_logs(
+            account_id=account_id,
             bucket_name=bucket_name,
+            regions=regions,
             start=start,
             end=end,
             malicious_ids=malicious_ids,
             normal_ids=normal_ids,
-            regions=regions,
-            account_id=account_id,
         )
     alerts_source = get_datadog_alerts(start=start, end=end)
     correlated_alerts = correlate_alerts_with_logs(
@@ -195,7 +218,26 @@ def evaluate_lab(
         logs_source=logs_source,
         malicious_ids=malicious_ids,
     )
-    compute_confusion_matrix(correlated_alerts)
+    confusion_matrix = compute_confusion_matrix(correlated_alerts=correlated_alerts)
+    logger.info("🔢 Compute event counts")
+    event_counts = compute_event_percentage_counts(
+        logs_source=logs_source,
+        include_absolute=True
+    )
+    results = LabResults(
+        start=start,
+        end=end,
+        account_id=account_id,
+        bucket_name=bucket_name,
+        regions=regions,
+        rule_scores=confusion_matrix.to_dicts(),
+        event_counts=event_counts.to_dicts(),
+        # users=users,
+        # compromised_users=compromised_users,
+        # user_personas=user_personas,
+        # user_policies=user_personas
+    )
+    return results
 
 
 async def run_lab(
@@ -254,9 +296,9 @@ async def run_lab(
     evaluate_lab(
         start=now - buffer_time,
         end=now + buffer_time,
+        account_id=account_id,
         bucket_name=bucket_name,
         regions=regions,
-        account_id=account_id,
         malicious_ids=malicious_ids,
         normal_ids=normal_ids,
         triage=triage
