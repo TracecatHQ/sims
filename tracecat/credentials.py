@@ -2,11 +2,13 @@ import json
 from tracecat.config import TRACECAT__LAB_DIR
 
 
-def load_lab_credentials(is_compromised: bool = False):
+def load_lab_credentials(is_compromised: bool = False, load_all: bool = False):
     with open(TRACECAT__LAB_DIR / "terraform/credentials.json") as f:
         key_type = "compromised" if is_compromised else "normal"
         try:
-            creds = json.load(f)[key_type]
+            creds = json.load(f)
+            if not load_all:
+                creds = creds[key_type]
         except KeyError as err:
             raise KeyError(
                 "Expected keys grouped as `compromised` or `normal`."

@@ -33,6 +33,7 @@ from abc import abstractmethod, ABC
 import boto3
 import inspect
 import textwrap
+import json
 from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, TypeVar
@@ -40,7 +41,7 @@ from typing import Any, TypeVar
 import boto3
 from pydantic import BaseModel
 
-from tracecat.config import TRACECAT__LAB_DIR
+from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.llm import async_openai_call
 from tracecat.logger import ActionLog, composite_logger, file_logger
 from tracecat.credentials import load_lab_credentials
@@ -63,6 +64,37 @@ def model_as_text(model: type[T]) -> str:
 
 __REPLACE_WITH_ACTIONS_LIST__ = str
 
+
+def load_all_policies(scenario_id: str):
+    """Returns mapping of every user policy in a scenario."""
+    dir_path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "policies"
+    policies = {}
+    for file_path in dir_path.glob("*.json"):
+        if file_path.is_file():
+            user_name = file_path.stem
+            with file_path.open() as f:
+                policies[user_name] = json.load(f)
+
+    if not len(policies) > 0:
+        raise FileNotFoundError(f"No policies found in {dir_path}")
+
+    return policies
+
+
+def load_all_personas(scenario_id: str):
+    """Returns mapping of every user persona in a scenario."""
+    dir_path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "personas"
+    personas = {}
+    for file_path in dir_path.glob("*.txt"):
+        if file_path.is_file():
+            user_name = file_path.stem
+            with file_path.open() as f:
+                personas[user_name] = f.read()
+
+    if not len(personas) > 0:
+        raise FileNotFoundError(f"No personas found in {dir_path}")
+
+    return personas
 
 class Action(BaseModel):
     """An action that a user can perform.

@@ -2,6 +2,7 @@ import asyncio
 import boto3
 import os
 import shutil
+import polars as pl
 import subprocess
 from tenacity import retry, stop_after_attempt
 from datetime import datetime, timedelta
@@ -10,6 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from tracecat.agents import load_all_policies, load_all_personas
+from tracecat.credentials import load_lab_credentials
 from tracecat.config import TRACECAT__LAB_DIR, TRACECAT__TRIAGE_DIR, path_to_pkg
 from tracecat.defense.siem_alerts import get_datadog_alerts
 from tracecat.evaluation import (
@@ -160,10 +163,26 @@ async def simulate_lab(
         logger.info("✅ Lab timed out successfully after %s seconds", timeout)
 
 
-class LabUsers(BaseModel):
-    names: list[str]
-    is_compromised: list[bool]
-    personas: list[dict]
+def get_lab_users(scenario_id: str) -> pl.DataFrame:
+    creds = load_lab_credentials(load_all=True)
+    compromised_users = creds["compromised"].keys()
+    policies = {
+        # NOTE: Coerce values in policies to strings
+        # Otherwise polars replace will ignore keys in nested dict
+        k: str(v) for k, v in
+        load_all_policies(scenario_id=scenario_id).items()
+    }
+    personas = load_all_personas(scenario_id=scenario_id)
+    lab_users = (
+        pl.DataFrame({"name": creds["normal"].keys()})
+        .with_columns(
+            is_compromised=pl.col("name").is_in(compromised_users),
+            policy=pl.col("name").replace(policies),
+            persona=pl.col("name").replace(personas)
+        )
+    )
+    return lab_users
+
 
 class LabResults(BaseModel):
     start: datetime
@@ -173,13 +192,11 @@ class LabResults(BaseModel):
     regions: list[str]
     rule_scores: list[dict]  # Confusion matrix
     event_counts: list[dict]  # Event frequencies
-    # users: list[str]
-    # compromised_users: list[str]
-    # user_personas: list[dict]
-    # user_policies: list[dict]
+    users: list[dict]  # Fields: name, is_compromised, policy, persona
 
 
 def evaluate_lab(
+    scenario_id: str,
     start: datetime,
     end: datetime,
     account_id: str = None,
@@ -229,6 +246,12 @@ def evaluate_lab(
         logs_source=logs_source,
         include_absolute=True
     )
+    logger.info("🔢 Final event counts: %s", confusion_matrix)
+
+    logger.info("🧬 Gather lab users info")
+    users = get_lab_users(scenario_id=scenario_id)
+    logger.info("🧬 All lab users info: %s", users)
+
     results = LabResults(
         start=start,
         end=end,
@@ -237,10 +260,7 @@ def evaluate_lab(
         regions=regions,
         rule_scores=confusion_matrix.to_dicts(),
         event_counts=event_counts.to_dicts(),
-        # users=users,
-        # compromised_users=compromised_users,
-        # user_personas=user_personas,
-        # user_policies=user_personas
+        users=users.to_dicts(),
     )
     return results
 
@@ -299,6 +319,7 @@ async def run_lab(
     buffer_time = buffer_time or timedelta(seconds=timeout + 21_600)
     now = datetime.now().replace(second=0, microsecond=0)
     evaluate_lab(
+        scenario_id=scenario_id,
         start=now - buffer_time,
         end=now + buffer_time,
         account_id=account_id,
