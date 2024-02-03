@@ -13,14 +13,13 @@ def scenario_to_infra_path(scenario_id: str) -> Path:
     return path
 
 
-def run_terraform(cmds: list[str], cwd: Path | None = None, chdir: str | None = None):
-    cwd = cwd or path_to_pkg()
+def run_terraform(cmds: list[str], chdir: str | None = None):
     base_cmds = ["docker", "compose", "run", "--rm", "terraform"]
     if chdir:
         base_cmds.append(f"-chdir={chdir}")
     process = subprocess.run(
         [*base_cmds, *cmds],
-        cwd=cwd,
+        cwd=path_to_pkg(),  # For docker-compose.yaml
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -32,14 +31,19 @@ def run_terraform(cmds: list[str], cwd: Path | None = None, chdir: str | None = 
         raise TerraformRunError(process.stdout)
     
 
-def show_terraform_state(cwd: Path, chdir: str | None = None):
-    cwd = cwd or path_to_pkg()
-    base_cmds = ["docker", "compose", "run", "--rm", "terraform"]
-    if chdir:
-        base_cmds.append(f"-chdir={chdir}")
+def show_terraform_state(path: str):
+    # NOTE: This is agnostic to volume path
+    cmds = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{path}:/workspace",
+        "hashicorp/terraform:latest",
+        "show"
+    ]
     process = subprocess.run(
-        [*base_cmds, "show"],
-        cwd=cwd,
+        cmds,
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
