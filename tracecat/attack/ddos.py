@@ -123,7 +123,7 @@ def warm_up_stratus(technique_id: str):
     _run_stratus_cmd(
         cmds=["warmup", technique_id],
         aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
     )
 
 
@@ -152,10 +152,17 @@ def detonate_stratus(technique_id: str):
     )
 
 
-async def simulate_stratus(technique_id: str, delay: int):
+async def simulate_stratus(
+    technique_id: str,
+    delay: int,
+    max_tasks: int,
+    max_actions: int
+):
     normal_user = NoisyStratusUser(
         name="redpanda",
-        technique_id=technique_id
+        technique_id=technique_id,
+        max_tasks=max_tasks,
+        max_actions=max_actions
     )
     normal_user.set_background()
     denotator = DelayedDetonator(
@@ -174,13 +181,13 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
         _run_stratus_cmd(
             ["cleanup", "--all"],
             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
         )
     else:
         _run_stratus_cmd(
             ["cleanup", technique_id],
             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
         )
 
 
