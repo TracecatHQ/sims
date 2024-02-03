@@ -14,7 +14,7 @@ LOG_FORMAT = (
 
 
 class ActionLog(BaseModel):
-    uid: UUID = Field(default_factory=uuid4)
+    uid: str = Field(default_factory=lambda: str(uuid4()))
     title: str
     user: str
     action: str
