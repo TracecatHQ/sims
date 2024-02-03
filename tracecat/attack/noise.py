@@ -1,7 +1,7 @@
 import json
 import textwrap
 import subprocess
-from tracecat.llm import async_openai_call
+from tracecat.llm import openai_call, async_openai_call
 from tracecat.agents import Objective, model_as_text, dynamic_action_factory, Task, AWSUser
 
 
@@ -65,23 +65,17 @@ class NoisyStratusUser(AWSUser):
         self,
         name: str,
         technique_id: str,
-        policy: dict,
-        background: str,
         max_tasks: int | None = None,
         max_actions: int | None = None,
         mock_actions: bool = False
     ):
+        self.name = name
         self.technique_id = technique_id
-        super().__init__(
-            name=name,
-            policy=policy,
-            background=background,
-            max_tasks=max_tasks,
-            max_actions=max_actions,
-            mock_actions=mock_actions
-        )        
+        self.max_tasks = max_tasks
+        self.max_actions = max_actions
+        self.mock_actions = mock_actions
 
-    async def set_background(self) -> str:
+    def set_background(self) -> str:
         stratus_show_output = subprocess.run([
             "docker",
             "run",
@@ -104,7 +98,7 @@ class NoisyStratusUser(AWSUser):
             " The software engineer or DevOps engineer might not follow security best practices,"
             " but they do not intend to harm their company in any way."
         )
-        result = await async_openai_call(
+        result = openai_call(
             prompt,
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
