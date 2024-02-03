@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
 import json
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -17,15 +16,16 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from tracecat.attack.ddos import ddos, clean_up_stratus
 from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
-from tracecat.config import TRACECAT__API_DIR
+from tracecat.autotuner import optimizer
+from tracecat.config import TRACECAT__API_DIR, TRACECAT__AUTOTUNER_DIR
 from tracecat.lab import (
     LabResults,
-    evaluate_lab,
     clean_up_lab,
+    evaluate_lab,
 )
 from tracecat.logger import standard_logger, tail_file
+from tracecat.schemas.datadog import RuleUpdateRequest
 
 load_dotenv(find_dotenv())
 logger = standard_logger(__name__)
@@ -143,7 +143,7 @@ def get_lab(
     triage: bool = False,
 ):
     """Get lab results.
-    
+
     Assumes lab simulation succesfully finished.
     """
     # NOTE: Very crude approximation...will need a place
@@ -163,7 +163,7 @@ def get_lab(
         regions=regions,
         malicious_ids=malicious_ids,
         normal_ids=normal_ids,
-        triage=triage
+        triage=triage,
     )
     return results
 
@@ -183,7 +183,7 @@ async def create_ddos_lab(
         timeout=timeout,
         delay=delay,
         max_tasks=max_tasks,
-        max_actions=max_actions
+        max_actions=max_actions,
     )
     return {"message": "Lab created"}
 
@@ -291,6 +291,7 @@ async def stream_events_distribution(id: Annotated[str, Depends(validate_events_
 
 # TODO: Change this out for a real implementation
 TEMPORARY_AUTOTUNE_DB_PATH = Path(".data/datadog.parquet").expanduser()
+PY_TO_TS_SCHEMA = {"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"}
 
 
 @app.get("/autotune/banner")
@@ -359,7 +360,7 @@ def get_all_rules():
     )
     return (
         df.lazy()
-        .rename({"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"})
+        .rename(PY_TO_TS_SCHEMA)
         .with_columns(
             score=np.random.randint(0, 100, df.height),
             status=pl.lit("active"),
@@ -375,15 +376,75 @@ def get_all_rules():
 
 @app.get("/autotune/rules/{id}")
 def get_rule(id: str):
-    return (
+    df = (
         pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
-        .filter(pl.col.id == id)
-        .with_columns(
-            score=pl.lit(np.randint(0, 100)),
-            status=pl.lit("active"),
-            timeSavable=pl.lit(np.randint(0, 100)),
-            severity=np.random.choice(["low", "medium", "high"]),
-        )
+        .filter(pl.col.rule_id == id)
         .collect(streaming=True)
-        .to_dicts()[0]
     )
+    if df.is_empty():
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    res = (
+        df.lazy()
+        .with_columns(
+            score=pl.lit(np.random.randint(0, 100)),
+            status=pl.lit("active"),
+            timeSavable=pl.lit(np.random.randint(0, 100)),
+            severity=pl.lit(np.random.choice(["low", "medium", "high"])),
+        )
+        .rename(PY_TO_TS_SCHEMA)
+        .collect(streaming=True)
+    ).to_dicts()[0]
+    return res
+
+
+@app.post("/autotune/optimizer/run-all")
+async def run_optimizer_all():
+    return NotImplemented
+
+
+def get_results_dir(rule_id: str, variant: str = "datadog"):
+    path = TRACECAT__AUTOTUNER_DIR / "results" / f"{variant}_{rule_id}"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+@app.post("/autotune/optimizer/run")
+async def run_optimizer(rule_id: str):
+    """Run the optimizer for the given rule and return the recommendation results.
+
+    This should trigger a background job.
+
+    Additionally saves the recommendation results to a directory.
+    """
+    # For each rule, run the optimizer
+    # Optimizer Steps (This is repeated in parallel 10x):
+    # 1. LLM Suggests a new rule using few show prompting with input/output examples
+    #   - Optional data enrichment step (RAG, threat intel)
+    # 2. We now have N new rules. Run these against the datdog API and return the results.
+    rule_data = get_rule(rule_id)
+    logger.info(json.dumps(rule_data, indent=2))
+    rule = RuleUpdateRequest.model_validate(rule_data)
+
+    # Only optimizing one rule rn
+    opt_results = await optimizer.optimize_rule(
+        rule_id, rule, variant="datadog", strategy="user_select"
+    )
+    # Save this to disk
+    with get_results_dir(rule_id).joinpath("results.json").open("w") as f:
+        data = [res.model_dump() for res in opt_results]
+        logger.info(data)
+        json.dump(data, f, indent=2)
+    return {"status": "ok"}
+
+
+@app.get("/autotune/optimizer/results", response_model=list[optimizer.OptimizerResult])
+async def get_optimizer_results(rule_id: str):
+    """Return the results of the optimizer for the given rule."""
+    # Get the path of the results
+    path = get_results_dir(rule_id) / "results.json"
+    with path.open("r") as f:
+        data = json.load(f)
+    print(data)
+    results = [optimizer.OptimizerResult.model_validate(r) for r in data]
+    return results
