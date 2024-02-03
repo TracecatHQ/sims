@@ -24,6 +24,7 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_triaged_cloudtrail_logs,
 )
 from tracecat.logger import standard_logger
+from tracecat.infrastructure import scenario_to_infra_path, run_terraform
 from tracecat.scenarios import SCENARIO_ID_TO_SIMULATION
 from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
 from tracecat.credentials import get_normal_ids, get_malicious_ids
@@ -31,29 +32,6 @@ from tracecat.credentials import get_normal_ids, get_malicious_ids
 
 logger = standard_logger(__name__, level="INFO")
 
-
-class TerraformRunError(Exception):
-    pass
-
-
-def _run_terraform(cmds: list[str]):
-    process = subprocess.run(
-        ["docker", "compose", "run", "--rm", "terraform", "-chdir=terraform", *cmds],
-        cwd=path_to_pkg(),
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True  # Ensure the output is returned as a string
-    )
-    print(process.stdout)
-    print(process.stderr)
-    if "Error" in process.stdout or "Error" in process.stderr:
-        raise TerraformRunError(process.stdout)
-
-
-def _scenario_to_infra_path(scenario_id: str) -> Path:
-    path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "infra"
-    return path
 
 
 def check_lab():
@@ -76,17 +54,17 @@ def _deploy_lab() -> Path:
     """
 
     logger.info("🚧 Initialize Terraform project")
-    _run_terraform(["init"])
+    run_terraform(["init"])
 
     # Terraform plan (safety)
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform plan")
-    _run_terraform(["plan", "-out=plan.tfplan"])
+    run_terraform(["plan", "-out=plan.tfplan"])
 
     # Terraform deploy
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform apply")
-    _run_terraform(["apply", "-auto-approve", "plan.tfplan"])
+    run_terraform(["apply", "-auto-approve", "plan.tfplan"])
 
 
 def initialize_lab(scenario_id: str):
@@ -113,7 +91,7 @@ def initialize_lab(scenario_id: str):
 
     # Copy Terraform project into labs
     logger.info("🚧 Copy Terraform project into lab")
-    project_path = _scenario_to_infra_path(scenario_id=scenario_id)
+    project_path = scenario_to_infra_path(scenario_id=scenario_id)
     shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
 
     # Deploy laab
@@ -303,7 +281,7 @@ def clean_up_lab(force: bool = False):
     """
     # Terraform destroy
     logger.info("🧹 Destroy lab infrastructure")
-    _run_terraform(["destroy"])
+    run_terraform(["destroy"])
 
     # NOTE: ONLY SPIN DOWN DOCKER AND
     # DELETE LAB FILES (which includes tfstate)
