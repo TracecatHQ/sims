@@ -5,6 +5,7 @@ from typing import Literal
 import orjson
 from dotenv import find_dotenv, load_dotenv
 from openai import AsyncOpenAI, OpenAI
+from openai.types.chat.chat_completion import Choice
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tracecat.logger import standard_logger
@@ -91,6 +92,14 @@ async def async_openai_call(
     dict[str, Any]
         The message object from the OpenAI ChatCompletion API.
     """
+
+    def parse_choice(choice: Choice) -> str | dict:
+        nonlocal parse_json, response_format
+        res = choice.message.content.strip()
+        if parse_json and response_format == "json_object":
+            return orjson.loads(res)
+        return res
+
     if response_format == "json_object":
         system_context += " Please only output valid JSON."
 
@@ -110,8 +119,7 @@ async def async_openai_call(
     )
     if stream:
         return response
-    res = response.choices[0].message.content.strip()
 
-    if parse_json and response_format == "json_object":
-        return orjson.loads(res)
-    return res
+    if len(response.choices) > 1:
+        return [parse_choice(c) for c in response.choices]
+    return parse_choice(response.choices[0])
