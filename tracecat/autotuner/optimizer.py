@@ -5,12 +5,12 @@ import textwrap
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Awaitable, Callable, Literal, TypeVar, get_args, get_origin
+from typing import Awaitable, Callable, Literal, Self, TypeVar, get_args, get_origin
 
 import httpx
 import orjson
 import polars as pl
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -28,7 +28,7 @@ from tracecat.schemas.datadog import RuleUpdateRequest
 Rule = TypeVar("Rule", bound=RuleUpdateRequest)
 Q = TypeVar("Q", bound=BaseModel)
 
-OptimizerStrategy = Literal["cherry_pick", "user_controlled"]
+OptimizerStrategy = Literal["cherry_pick", "user_select"]
 logger = standard_logger(__name__)
 
 
@@ -260,13 +260,19 @@ async def _get_paginated_endpoint(url: str, headers: dict, body: dict):
     return all_events
 
 
-async def get_datadog_logs(
+def get_queries_dir() -> Path:
+    path = TRACECAT__AUTOTUNER_DIR / "queries"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+async def run_datadog_query_on_logs(
     start: datetime,
     end: datetime,
     rule: Rule,
     limit: int = 1000,
-) -> Path | None:
-    """Get alerts from Datadog.
+) -> tuple[Path | None, int | None]:
+    """Run Datadog query on a range of logs.
 
     Only CloudTrail alerts are downloaded.
     """
@@ -304,32 +310,63 @@ async def get_datadog_logs(
 
     if not events:
         logger.info("No events found for the query.")
-        return None
-    queries_cache = TRACECAT__AUTOTUNER_DIR / "queries_cache"
-    queries_cache.mkdir(parents=True, exist_ok=True)
+        return None, None
 
     df = pl.from_dicts(events).unnest("attributes")
-    print(df)
-    file_path = queries_cache / f"{rule.name}__{datetime.utcnow().isoformat()}.parquet"
+    logger.info(df)
+    file_path = (
+        get_queries_dir() / f"{rule.name}__{datetime.utcnow().isoformat()}.parquet"
+    )
     df.write_parquet(file_path)
-    return file_path
+    return file_path, df.height
 
 
-class QueryResults(BaseModel):
+class QueryResult(BaseModel):
     rule_id: str
     path: Path | None = None
+    n_alerts: int | None = None
+
+    @field_serializer("path")
+    def serialize_path(self, path: Path | None):
+        return str(path.expanduser().resolve()) if path else None
+
+
+class OptimizerResult(BaseModel):
+    rule_id: str
+    rule_rec: RuleUpdateRec
+    query_path: Path | None = None
+    n_alerts: int | None = None
+
+    @field_serializer("query_path")
+    def serialize_query_path(self, path: Path | None):
+        return str(path.expanduser().resolve()) if path else None
+
+    @classmethod
+    def list_from_query_results(
+        cls, query_results: list[QueryResult], rule_rec: list[RuleUpdateRec]
+    ) -> list[Self]:
+        return [
+            cls(
+                rule_id=qr.rule_id,
+                rule_rec=rec,
+                query_path=qr.path,
+                n_alerts=qr.n_alerts,
+            )
+            for qr, rec in zip(query_results, rule_rec, strict=True)
+        ]
 
 
 async def execute_query(
     start: datetime, end: datetime, rule_rec: RuleUpdateRec
-) -> QueryResults:
-    path = await get_datadog_logs(start, end, rule_rec.rule)
-    return QueryResults(rule_id=rule_rec.rule_id, path=path)
+) -> QueryResult:
+    """Execute the query and add the number of alerts."""
+    path, n_alerts = await run_datadog_query_on_logs(start, end, rule_rec.rule)
+    return QueryResult(rule_id=rule_rec.rule_id, path=path, n_alerts=n_alerts)
 
 
 async def execute_queries(
     start: datetime, end: datetime, rule_recs: list[RuleUpdateRec]
-) -> list[QueryResults]:
+) -> list[QueryResult]:
     """Executes a list of queries and returns the paths of the results."""
     # NOTE: This is likely IO bound because we're hitting DD api
 
@@ -365,9 +402,15 @@ def pick_best_rule(rules: list[Rule]) -> Rule:
 ########################
 
 
+def get_recs_dir() -> Path:
+    path = TRACECAT__AUTOTUNER_DIR / "recommendations"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 async def cherry_pick_strategy(
     rule_id: str, rule: Rule, variant: RuleType
-) -> list[QueryResults]:
+) -> list[OptimizerResult]:
     """Returns a cherry picked rule based on the input rule."""
     # We first generate a list of options, then cherry pick the best one.
     # This returns a list of rule suggestions
@@ -393,21 +436,19 @@ async def cherry_pick_strategy(
     logger.info(f"Executing queries for rule {rule.name}...")
     end = datetime.utcnow() + timedelta(days=1)
     start = end - timedelta(days=3)
-    new_alert_results = await execute_queries(start, end, recs)
-    return new_alert_results
+    query_results = await execute_queries(start, end, recs)
+    return OptimizerResult.list_from_query_results(query_results, recs)
 
 
 async def user_select_strategy(
     rule_id: str, rule: Rule, variant: RuleType
-) -> list[QueryResults]:
+) -> list[OptimizerResult]:
     """Returns list of rule recommendations for the user to select."""
 
     logger.info(f"Generating recommendations for rule {rule.name}...")
-    checkpoint_path = TRACECAT__AUTOTUNER_DIR / "checkpoints"
-    checkpoint_path.mkdir(parents=True, exist_ok=True)
 
     filename = f"{variant}__{rule_id}.json"
-    recs_path = checkpoint_path / filename
+    recs_path = get_recs_dir() / filename
     if not recs_path.exists():
         recs = await recommend_new_rule(rule_id, rule, variant=variant, n_choices=3)
         with recs_path.open("w") as f:
@@ -422,8 +463,8 @@ async def user_select_strategy(
     logger.info(f"Executing queries for rule {rule.name}...")
     end = datetime.utcnow() + timedelta(days=1)
     start = end - timedelta(days=3)
-    new_alert_results = await execute_queries(start, end, recs)
-    return new_alert_results
+    query_results = await execute_queries(start, end, recs)
+    return OptimizerResult.list_from_query_results(query_results, recs)
 
 
 async def optimize_rule(
@@ -431,18 +472,18 @@ async def optimize_rule(
     rule: Rule,
     *,
     variant: RuleType,
-    strategy: OptimizerStrategy = "cherry_pick",
-) -> list[QueryResults]:
+    strategy: OptimizerStrategy = "user_select",
+) -> list[OptimizerResult]:
     """Optimizes a rule based on the input rule."""
     optimizer = RULE_OPTIMIZER_FACTORY[strategy]
     return await optimizer(rule_id, rule, variant=variant)
 
 
 RULE_OPTIMIZER_FACTORY: dict[
-    OptimizerStrategy, Callable[..., Awaitable[list[QueryResults]]]
+    OptimizerStrategy, Callable[..., Awaitable[list[OptimizerResult]]]
 ] = {
     "cherry_pick": cherry_pick_strategy,
-    "user_controlled": user_select_strategy,
+    "user_select": user_select_strategy,
 }
 
 RULE_TRANSLATOR_FACTORY = {
