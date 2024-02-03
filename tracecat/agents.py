@@ -373,6 +373,7 @@ class AWSUser(User):
                             "\nIf no: reply with message 'Not compliant', explain why, tell me how to fix."
                         ),
                         system_context="You are a helpful Boto3 expert.",
+                        model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
                         response_format="text"
                     )
                     is_tf_compliant = await async_openai_call(
@@ -383,6 +384,7 @@ class AWSUser(User):
                             "\nIf no: reply with message 'Not compliant', explain why, tell me how to fix."
                         ),
                         system_context="You are a helpful AWS, Boto3, and Terraform expert.",
+                        model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
                         response_format="text"
                     )
                     is_compliant = (
@@ -394,18 +396,20 @@ class AWSUser(User):
                         # This represents junior developer making mistakes
                         # which is (probably) the cause of most false positives
                         self.logger.info(
-                            "🤖 Make Boto3 API call (%r, %r, %s)",
-                            aws_service, aws_method, request_parameters
+                            "🤖 Make Boto3 API call: (%r, %r)",
+                            "\nRequest parameters:\n%s"
+                            "\nGot response:\n%s",
+                            aws_service, aws_method, json.dumps(request_parameters, indent=2)
                         )
                         response_elements = aws_method_call(**request_parameters)  # LLM breakpoint
                         self.logger.info(
-                            "✅ Successfully ran Boto3 API call."
-                            "\nMade request:\n(%r, %r, %s)"
+                            "✅ Successfully ran Boto3 API call: (%r, %r"
+                            "\nRequest parameters:\n%s"
                             "\nGot response:\n%s",
                             aws_service,
                             boto3_method,
-                            request_parameters,
-                            response_elements
+                            json.dumps(request_parameters, indent=2),
+                            json.dumps(response_elements, indent=2)
                         )
                         break
                     else:
@@ -413,19 +417,20 @@ class AWSUser(User):
                         # This represents junior developer making mistakes
                         # which is (probably) the cause of most false positives
                         self.logger.warning(
-                            "⚠️ Force non-compliant Boto3 API call (%r, %r, %s)",
-                            aws_service, aws_method, request_parameters
+                            "⚠️ Force non-compliant Boto3 API call: (%r, %r)",
+                            aws_service, aws_method, json.dumps(request_parameters, indent=2)
                         )
                         try:
                             response_elements = aws_method_call(**request_parameters)  # LLM breakpoint
-                            response_elements_prompt = f"\nGot response:\n```{response_elements}```"
+                            response_elements_prompt = f"\nGot response:\n```{json.dumps(response_elements, indent=2)}```"
                         except Exception as e:
                             if not "true" in is_boto3_compliant.lower():
                                 self.logger.warning(
                                     "🧯 Boto3 API call is not compliant."
-                                    "\nTried to make Boto3 API call:\n(%r, %r, %s)"
+                                    "\nTried to make Boto3 API call: (%r, %r)"
+                                    "\nRequest parameters:\n%s"
                                     "\nSuggested fix:\n%s",
-                                    aws_service, aws_method, request_parameters, is_boto3_compliant
+                                    aws_service, aws_method, json.dumps(request_parameters, indent=2), is_boto3_compliant
                                 )
                                 request_parameters = await async_openai_call(
                                     (
@@ -440,15 +445,17 @@ class AWSUser(User):
                                         "\nYou are helping a junior dev solve the following task:"
                                         f"\n```{request_params_prompt}```"
                                     ),
+                                    # model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
                                     response_format="json_object"
                                 )
                             if not "true" in is_tf_compliant:
                                 self.logger.warning(
                                     "🧯 Boto3 API call is not compliant with Terraform state."
-                                    "\nTried to make Boto3 API call:\n(%r, %r, %s)"
-                                    "\nCurrent Terraform state:\n```%s```"
+                                    "\nTried to make Boto3 API call: (%r, %r)"
+                                    "\nRequest parameters:\n%s"
+                                    "\nTerraform state:\n```%r```"
                                     "\nSuggested fix:\n%s",
-                                    aws_service, aws_method, request_parameters, json.dumps(terraform_state, indent=2), is_tf_compliant
+                                    aws_service, aws_method, json.dumps(request_parameters, indent=2), json.dumps(terraform_state, indent=2), is_tf_compliant
                                 )
                                 request_parameters = await async_openai_call(
                                     (
@@ -463,6 +470,7 @@ class AWSUser(User):
                                         "\nYou are helping a junior dev solve the following task:"
                                         f"\n```{request_params_prompt}```"
                                     ),
+                                    # model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
                                     response_format="json_object"
                                 )
 
