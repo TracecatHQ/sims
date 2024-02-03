@@ -74,6 +74,7 @@ class NoisyStratusUser(AWSUser):
         self.max_tasks = max_tasks
         self.max_actions = max_actions
         self.mock_actions = mock_actions
+        self.objectives: list[str] = []
 
     def set_background(self) -> str:
         stratus_show_output = subprocess.run([
