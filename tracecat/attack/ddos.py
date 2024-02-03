@@ -167,14 +167,21 @@ async def simulate_stratus(technique_id: str, delay: int):
     await asyncio.gather(*[task.run() for task in tasks])
 
 
-def clean_up_stratus(technique_id: str):
+def clean_up_stratus(technique_id: str | None = None, include_all: bool = False):
     # NOTE: We clean up infra using server admin
     # to avoid this being logged into scored alerts
-    _run_stratus_cmd(
-        ["cleanup", technique_id],
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
-    )
+    if include_all:
+        _run_stratus_cmd(
+            ["cleanup", "--all"],
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+        )
+    else:
+        _run_stratus_cmd(
+            ["cleanup", technique_id],
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+        )
 
 
 async def ddos(
@@ -214,4 +221,4 @@ async def ddos(
         clean_up_stratus(technique_id=technique_id)
 
     # Final clean up
-    _run_stratus_cmd(["cleanup", "--all"])
+    clean_up_stratus(include_all=True)
