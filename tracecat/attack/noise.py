@@ -14,13 +14,12 @@ class NoisyStratusUser(AWSAssumeRoleUser):
         self,
         name: str,
         technique_id: str,
-        terraform_path: Path | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
         mock_actions: bool = False
     ):
         self.technique_id = technique_id
-        terraform_path = terraform_path or STRATUS__HOME_DIR
+        terraform_path = STRATUS__HOME_DIR / technique_id
         super().__init__(
             name=name,
             terraform_path=terraform_path,
