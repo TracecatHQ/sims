@@ -17,6 +17,7 @@ from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from tracecat.attack.ddos import ddos, clean_up_stratus
 from tracecat.agents import TRACECAT__LAB_ACTIONS_LOGS_PATH
 from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
@@ -170,6 +171,26 @@ def get_lab(
     return results
 
 
+@app.post("/ddos")
+async def create_ddos_lab(
+    background_tasks: BackgroundTasks,
+    n_attacks: int = 10,
+    timeout: int | None = None,
+    delay: int | None = None,
+    max_tasks: int | None = None,
+    max_actions: int | None = None,
+):
+    background_tasks.add_task(
+        ddos,
+        n_attacks=n_attacks,
+        timeout=timeout,
+        delay=delay,
+        max_tasks=max_tasks,
+        max_actions=max_actions
+    )
+    return {"message": "Lab created"}
+
+
 @app.post("/lab")
 async def create_lab(
     scenario_id: str,
@@ -205,6 +226,7 @@ def delete_lab():
     Container is not stopped in this case.
     """
     clean_up_lab()
+    clean_up_stratus(include_all=True)
 
 
 # Live Agent Feeds
