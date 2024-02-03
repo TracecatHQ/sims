@@ -1,9 +1,6 @@
 provider "aws" {}
 
-variable "allowed_aws_region" {
-  description = "The AWS region where the user and role are allowed to operate"
-  type        = string
-}
+data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
@@ -46,7 +43,7 @@ resource "aws_iam_role_policy" "region_restriction" {
         Resource = "*",
         Condition = {
           StringEquals = {
-            "aws:RequestedRegion": var.allowed_aws_region
+            "aws:RequestedRegion": data.aws_region.current.name
           }
         }
       }
@@ -80,7 +77,7 @@ resource "aws_iam_access_key" "normal" {
 }
 
 resource "aws_iam_access_key" "compromised" {
-  user = "${aws_iam_user.compromised.name}"
+  user = "${aws_iam_user.tracecat_lab_admin_attacker.name}"
 }
 
 resource "local_file" "credentials" {
