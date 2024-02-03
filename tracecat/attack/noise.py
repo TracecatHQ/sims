@@ -1,6 +1,7 @@
 import json
 import textwrap
 import subprocess
+from pathlib import Path
 from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import openai_call, async_openai_call
 from tracecat.agents import Objective, model_as_text, AWSAPICallAction, Task, AWSAssumeRoleUser
@@ -13,23 +14,20 @@ class NoisyStratusUser(AWSAssumeRoleUser):
         self,
         name: str,
         technique_id: str,
+        terraform_path: Path | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
         mock_actions: bool = False
     ):
         self.technique_id = technique_id
+        terraform_path = terraform_path or STRATUS__HOME_DIR
         super().__init__(
             name=name,
+            terraform_path=terraform_path,
             max_tasks=max_tasks,
             max_actions=max_actions,
             mock_actions=mock_actions
         )
-
-    def get_terraform_state(self):
-        path = STRATUS__HOME_DIR / self.technique_id / "terraform.tfstate"
-        with open(path, "r") as f:
-            script = f.read()
-        return script
 
     def set_background(self) -> str:
         stratus_show_output = subprocess.run([
@@ -45,6 +43,7 @@ class NoisyStratusUser(AWSAssumeRoleUser):
             "You are an expert in reverse engineering Cloud cyber attacks."
             "You are an expert in Cloud activities that produce false positives in a SIEM."
             "You are an expert in spoofing in the Cloud."
+            "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = (
             f"Your task is to rewrite this attack description:\n```{attack_description}```"
