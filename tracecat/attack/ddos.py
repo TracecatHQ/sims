@@ -141,8 +141,8 @@ def detonate_stratus(technique_id: str):
     session_token = assume_aws_role(
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        aws_role_name="tracecat-lab-admin-attacker-role",
-        aws_role_session_name=f"tracecat-lab-stratus-{technique_id}-{ts}",
+        aws_role_name="tracecat-lab-admin-role",
+        aws_role_session_name=f"tracecat-lab-attacker-{technique_id}-{ts}",
     )
 
     # Create infra

@@ -28,6 +28,7 @@ Simpler kflow (less api calls):
 from __future__ import annotations
 
 import asyncio
+import datetime
 import random
 from abc import abstractmethod, ABC
 import boto3
@@ -42,6 +43,7 @@ import boto3
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
+from tracecat.credentials import assume_aws_role
 from tracecat.llm import async_openai_call
 from tracecat.logger import ActionLog, composite_logger, file_logger
 from tracecat.credentials import load_lab_credentials
@@ -281,6 +283,15 @@ class PythonBoto3APICall(BaseModel):
 
 class AWSUser(User):
 
+    def get_boto3_client(self, service: str):
+        creds = load_lab_credentials(is_compromised=False)
+        client = boto3.client(
+            service,
+            aws_access_key_id=creds[self.name]["aws_access_key_id"],
+            aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
+        )
+        return client
+
     async def _make_api_call(self, action: Action, max_retries: int = 3):
         """Make AWS Boto3 API call."""
         error = None
@@ -314,19 +325,36 @@ class AWSUser(User):
                 service = args.pop("service")
                 method = args.pop("method")
                 kwargs = args.pop("kwargs")
-                # TODO: Use context manager to switch compromised / not
-                creds = load_lab_credentials(is_compromised=False)
-                client = boto3.client(
-                    service,
-                    aws_access_key_id=creds[self.name]["aws_access_key_id"],
-                    aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
-                )
+                client = self.get_boto3_client(service)
                 fn = getattr(client, method)
                 result = fn(**kwargs)
                 return result
             except Exception as e:
                 self.logger.error(f"Error in boto3 api call: {e}")
                 error = e
+
+
+class AWSAssumeRoleUser(AWSUser):
+
+    def get_boto3_client(self, service: str):
+        creds = load_lab_credentials(is_compromised=False)
+        aws_access_key_id = creds[self.name]["aws_access_key_id"]
+        aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
+        # Assume role and get session token
+        ts = datetime.now().strftime("%Y%m%d%H%M%S")
+        session_token = assume_aws_role(
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_role_name="tracecat-lab-admin-role",
+            aws_role_session_name=f"tracecat-lab-normal-{self.technique_id}-{ts}",
+        )
+        client = boto3.client(
+            service,
+            aws_access_key_id=creds[self.name]["aws_access_key_id"],
+            aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
+            aws_session_token=session_token
+        )
+        return client
 
 
 class NormalAWSUser(AWSUser):

@@ -2,7 +2,7 @@ import json
 import textwrap
 import subprocess
 from tracecat.llm import openai_call, async_openai_call
-from tracecat.agents import Objective, model_as_text, dynamic_action_factory, Task, AWSUser
+from tracecat.agents import Objective, model_as_text, dynamic_action_factory, Task, AWSAssumeRoleUser
 
 
 MOST_COMMON_AWS_API_CALLS = [
@@ -58,7 +58,7 @@ MOST_COMMON_AWS_API_CALLS = [
 ]
 
 
-class NoisyStratusUser(AWSUser):
+class NoisyStratusUser(AWSAssumeRoleUser):
     """The expert false positives generator."""
 
     def __init__(

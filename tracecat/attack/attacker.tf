@@ -9,7 +9,7 @@ resource "aws_iam_user" "tracecat_lab_admin_attacker" {
 }
 
 resource "aws_iam_role" "allowed_region_admin_role" {
-  name                 = "tracecat-lab-admin-attacker-role"
+  name                 = "tracecat-lab-admin-role"
   max_session_duration = 3600 # 1 hour in seconds
 
   assume_role_policy = jsonencode({
