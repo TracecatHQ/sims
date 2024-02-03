@@ -123,13 +123,13 @@ def initialize_lab(scenario_id: str):
 async def simulate_lab(
     scenario_id: str,
     timeout: int | None = None,
-    delayed_seconds: int | None = None,
+    delay: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
 ):
     """Asynchronously run organization to simuluate normal behavior and detonate attack."""
     timeout = timeout or 300
-    delayed_seconds = delayed_seconds or 60
+    delay = delay or 60
 
     try:
         simulate = SCENARIO_ID_TO_SIMULATION[scenario_id]
@@ -139,7 +139,7 @@ async def simulate_lab(
     try:
         await asyncio.wait_for(
             simulate(
-                delay_seconds=delayed_seconds,
+                delay=delay,
                 max_tasks=max_tasks,
                 max_actions=max_actions,
             ),
@@ -255,7 +255,7 @@ async def run_lab(
     scenario_id: str,
     skip_simulation: bool = False,
     timeout: int | None = None,
-    delayed_seconds: int | None = None,
+    delay: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
     task_retries: int | None = None,
@@ -278,7 +278,7 @@ async def run_lab(
             (simulate_lab, {
                 "scenario_id": scenario_id,
                 "timeout": timeout,
-                "delayed_seconds": delayed_seconds,
+                "delay": delay,
                 "max_tasks": max_tasks,
                 "max_actions": max_actions}
             ),
