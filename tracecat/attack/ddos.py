@@ -110,7 +110,7 @@ def _run_stratus_cmd(
     if aws_session_token:
         cmd = parent_cmd + [
             "-e",
-            f"AWS_SESSION_TOKEN={os.environ['AWS_SESSION_TOKEN']}",
+            f"AWS_SESSION_TOKEN={aws_session_token}",
             "ghcr.io/datadog/stratus-red-team",
             *cmds
         ]
