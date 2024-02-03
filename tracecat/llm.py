@@ -49,7 +49,7 @@ def openai_call(
         {"role": "user", "content": prompt},
     ]
 
-    logger.info("Calling OpenAI API...")
+    logger.info("🧠 Calling OpenAI API with model: %s...", model)
     response = client.chat.completions.create(
         model=model,
         response_format={"type": response_format},
@@ -99,7 +99,7 @@ async def async_openai_call(
         {"role": "user", "content": prompt},
     ]
 
-    logger.info("Calling OpenAI API...")
+    logger.info("🧠 Calling OpenAI API with model: %s...", model)
     response = await async_client.chat.completions.create(
         model=model,
         response_format={"type": response_format},
