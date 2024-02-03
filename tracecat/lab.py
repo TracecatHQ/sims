@@ -53,18 +53,20 @@ def _deploy_lab() -> Path:
     Assumes lab project files already configured and Terraform in Docker is available.
     """
 
+    chdir = "terraform"
+
     logger.info("🚧 Initialize Terraform project")
-    run_terraform(["init"])
+    run_terraform(["init"], chdir=chdir)
 
     # Terraform plan (safety)
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform plan")
-    run_terraform(["plan", "-out=plan.tfplan"])
+    run_terraform(["plan", "-out=plan.tfplan"], chdir=chdir)
 
     # Terraform deploy
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform apply")
-    run_terraform(["apply", "-auto-approve", "plan.tfplan"])
+    run_terraform(["apply", "-auto-approve", "plan.tfplan"], chdir=chdir)
 
 
 def initialize_lab(scenario_id: str):
@@ -281,7 +283,7 @@ def clean_up_lab(force: bool = False):
     """
     # Terraform destroy
     logger.info("🧹 Destroy lab infrastructure")
-    run_terraform(["destroy"])
+    run_terraform(["destroy"], chdir="terraform")
 
     # NOTE: ONLY SPIN DOWN DOCKER AND
     # DELETE LAB FILES (which includes tfstate)
