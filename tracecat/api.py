@@ -400,7 +400,7 @@ def get_rule(id: str):
 
 @app.post("/autotune/optimizer/run-all")
 async def run_optimizer_all():
-    return NotImplemented
+    return {"status": "ok"}
 
 
 def get_results_dir(rule_id: str, variant: str = "datadog"):
@@ -440,11 +440,25 @@ async def run_optimizer(rule_id: str):
 
 @app.get("/autotune/optimizer/results", response_model=list[optimizer.OptimizerResult])
 async def get_optimizer_results(rule_id: str):
-    """Return the results of the optimizer for the given rule."""
-    # Get the path of the results
+    """Return the results for the given rule."""
     path = get_results_dir(rule_id) / "results.json"
     with path.open("r") as f:
         data = json.load(f)
     print(data)
     results = [optimizer.OptimizerResult.model_validate(r) for r in data]
     return results
+
+
+@app.get(
+    "/autotune/optimizer/results/{index}", response_model=optimizer.OptimizerResult
+)
+async def get_optimizer_result_by_index(rule_id: str, index: int):
+    """Return the index-th result for the given rule."""
+    path = get_results_dir(rule_id) / "results.json"
+    with path.open("r") as f:
+        data = json.load(f)
+    print(len(data), data)
+    if index >= len(data):
+        raise HTTPException(status_code=404, detail="Index not found")
+    result = optimizer.OptimizerResult.model_validate(data[index])
+    return result
