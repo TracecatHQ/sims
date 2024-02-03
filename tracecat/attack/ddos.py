@@ -74,9 +74,11 @@ def initialize_stratus_lab():
     )
 
     # Copy Terraform project into labs
-    logger.info("🚧 Copy Terraform project into lab")
-    project_path = path_to_pkg() / "tracecat/attack"
-    shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
+    logger.info("🚧 Copy Terraform script into lab")
+    script_src = path_to_pkg() / "tracecat/attack/attacker.tf"
+    script_dst = TRACECAT__LAB_DIR / "terraform"
+    script_dst.mkdir(parents=True, exist_ok=True)
+    shutil.copy(script_src, script_dst)
 
     # Create Terraform infra
     _deploy_lab()
