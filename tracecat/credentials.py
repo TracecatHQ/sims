@@ -48,7 +48,7 @@ def assume_aws_role(
         aws_secret_access_key=aws_secret_access_key,
     )
     aws_account_id = aws_account_id or sts_client.get_caller_identity()["Account"]
-    role_arn = f"arn:aws:iam::{aws_account_id}/{aws_role_name}"
+    role_arn = f"arn:aws:iam::{aws_account_id}:role/{aws_role_name}"
     assumed_role_object=sts_client.assume_role(
         RoleArn=role_arn,
         RoleSessionName=aws_role_session_name
