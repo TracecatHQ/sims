@@ -3,11 +3,23 @@
 This is a pentesting tool that assumes full visibility into your AWS inventory.
 """
 
+import asyncio
+import datetime
 import os
 import random
 import subprocess
-import time
+import shutil
 from pathlib import Path
+
+from tracecat.attack.noise import NoisyUser
+from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
+from tracecat.credentials import assume_aws_role, load_lab_credentials
+from tracecat.logger import standard_logger
+from tracecat.lab import _deploy_lab
+
+
+logger = standard_logger(__name__, level="INFO")
+
 
 AWS_ATTACK_TECHNIQUES = [
     "aws.credential-access.ec2-get-password-data",
@@ -33,11 +45,11 @@ AWS_ATTACK_TECHNIQUES = [
     "aws.impact.s3-ransomware-batch-deletion",
     "aws.impact.s3-ransomware-client-side-encryption",
     "aws.impact.s3-ransomware-individual-deletion",
-    "aws.initial-access.console-login-without-mfa",
+    # "aws.initial-access.console-login-without-mfa",  # Creates new user
     "aws.persistence.iam-backdoor-role",
-    "aws.persistence.iam-backdoor-user",
+    # "aws.persistence.iam-backdoor-user",  # Creates new user
     "aws.persistence.iam-create-admin-user",
-    "aws.persistence.iam-create-user-login-profile",
+    # "aws.persistence.iam-create-user-login-profile",  # Creates new user
     "aws.persistence.lambda-backdoor-function",
     "aws.persistence.lambda-layer-extension",
     "aws.persistence.lambda-overwrite-code",
@@ -45,30 +57,122 @@ AWS_ATTACK_TECHNIQUES = [
 ]
 
 
-def _run_stratus(cmds: list[str]):
+def initialize_stratus_lab():
+    # Create temporary admin user with Terraform
+    # Two set of IAM keys are stored in labs/terraform/credentials.json
+    
+    logger.info("🐱 Create new lab directory")
+    TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Create Terraform on Docker
+    # TODO: Capture stdout and deal with errors
+    logger.info("🚧 Create Terraform in Docker container")
+    subprocess.run(
+        ["docker", "compose", "-f", path_to_pkg() / "docker-compose.yaml", "up", "-d"],
+        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+    )
+
+    # Copy Terraform project into labs
+    logger.info("🚧 Copy Terraform project into lab")
+    project_path = path_to_pkg() / "tracecat/attack"
+    shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
+
+    # Create Terraform infra
+    _deploy_lab()
+
+
+def _run_stratus_cmd(
+    cmds: list[str],
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+    aws_session_token: str | None = None,
+    aws_default_region: str | None = None
+):
+    aws_default_region = aws_default_region or os.environ["AWS_DEFAULT_REGION"]
     stratus_dir_path = Path(os.path.expanduser("~")) / ".stratus-red-team"
     os.makedirs(stratus_dir_path, exist_ok=True)
-    cmd = [
+    parent_cmd = [
         "docker",
         "run",
         "--rm",
         "-v",
         f"{stratus_dir_path}:/root/.stratus-red-team",
         "-e",
-        f"AWS_ACCESS_KEY_ID={os.environ['AWS_ACCESS_KEY_ID']}",
+        f"AWS_ACCESS_KEY_ID={aws_access_key_id}",
         "-e",
-        f"AWS_SECRET_ACCESS_KEY={os.environ['AWS_SECRET_ACCESS_KEY']}",
+        f"AWS_SECRET_ACCESS_KEY={aws_secret_access_key}",
         "-e",
-        f"AWS_DEFAULT_REGION={os.environ['AWS_DEFAULT_REGION']}",
-        "ghcr.io/datadog/stratus-red-team",
-        *cmds,
+        f"AWS_DEFAULT_REGION={aws_default_region}"
     ]
+    if aws_session_token:
+        cmd = parent_cmd + [
+            "-e",
+            f"AWS_SESSION_TOKEN={os.environ['AWS_SESSION_TOKEN']}",
+            "ghcr.io/datadog/stratus-red-team",
+            *cmds
+        ]
+    else:
+        cmd = parent_cmd + ["ghcr.io/datadog/stratus-red-team", *cmds]
     subprocess.run(cmd)
 
 
-def ddos(n_attacks: int = 10, delay: int = 1):
+def warm_up_stratus(technique_id: str):
+    # NOTE: We create infra using server admin
+    # to avoid this being logged into scored alerts
+    _run_stratus_cmd(
+        cmds=["warmup", technique_id],
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+    )
+
+
+def detonate_stratus(technique_id: str):
+
+    # Get creds for compromised user
+    creds = load_lab_credentials(is_compromised=True)
+    aws_access_key_id = creds["redpanda"]["aws_access_key_id"]
+    aws_secret_access_key = creds["redpanda"]["aws_secret_access_key"]
+
+    # Assume role and get session token
+    ts = datetime.now().strftime("%Y%m%d%H%M%S")
+    session_token = assume_aws_role(
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_role_name="tracecat-lab-admin-attacker-role",
+        aws_role_session_name=f"tracecat-lab-stratus-{technique_id}-{ts}",
+    )
+
+    # Create infra
+    _run_stratus_cmd(
+        cmds=["warmup", technique_id],
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_session_token=session_token
+    )
+
+
+def clean_up_stratus(technique_id: str):
+    # NOTE: We clean up infra using server admin
+    # to avoid this being logged into scored alerts
+    _run_stratus_cmd(
+        ["cleanup", technique_id],
+        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_EY"]
+    )
+
+
+async def ddos(n_attacks: int = 10, delay: int = 1):
+
+    # Create lab admin credentials
+    initialize_stratus_lab()
+
+    # Run simulation
     for _ in range(n_attacks):
         technique_id = random.choice(AWS_ATTACK_TECHNIQUES)
-        _run_stratus(["detonate", technique_id])
-        time.sleep(delay)
-    _run_stratus("cleanup", "--all")
+        warm_up_stratus(technique_id=technique_id)
+        detonate_stratus(technique_id=technique_id)
+        # ADD NORMAL BEHAVIOR
+        clean_up_stratus(technique_id=technique_id)
+
+    # Final clean up
+    _run_stratus_cmd(["cleanup", "--all"])
