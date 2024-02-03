@@ -172,7 +172,10 @@ async def simulate_stratus(
         detonate=detonate_stratus,
         technique_id=technique_id
     )
-    tasks = [normal_user, denotator]
+    tasks = [
+        normal_user,
+        # denotator
+    ]
     await asyncio.gather(*[task.run() for task in tasks])
 
 
@@ -201,8 +204,8 @@ async def ddos(
     max_actions: int | None = None,
 ):
 
-    timeout = timeout or 100
-    delay = delay or 50
+    timeout = timeout or 300
+    delay = delay or 15
 
     # Create lab admin credentials
     initialize_stratus_lab()
@@ -225,9 +228,8 @@ async def ddos(
             )
         except asyncio.TimeoutError:
             logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
-
-        simulate_stratus(technique_id=technique_id)
-        clean_up_stratus(technique_id=technique_id)
+        finally:
+            clean_up_stratus(technique_id=technique_id)
 
     # Final clean up
     clean_up_stratus(include_all=True)

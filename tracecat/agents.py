@@ -98,27 +98,27 @@ def load_all_personas(scenario_id: str):
 
     return personas
 
-class Action(BaseModel):
+class AWSAPICallAction(BaseModel):
     """An action that a user can perform.
 
-    Parammeters
+    Parameters
     -----------
-    name: str | None = None
-        The name of the action. This may be an API call within the permitted actions list, or a custom non-API call action.
-        Use "None" if the action is a custom action.
+    name: str
+        The name of the AWS service and API call (e.g. `s3:ListBucket`).
+        This must be explicitly mentioned in the "Background" or "Objectives".
     description: str
         The intent of the action. Please be detailed and verbose when describing the intent.
     duration: float
-        A reasonable estimate of the time in seconds to complete this action.
+        Time in seconds between 5-15 seconds to complete this action.
     """
 
-    name: __REPLACE_WITH_ACTIONS_LIST__ | None = None
+    name: __REPLACE_WITH_ACTIONS_LIST__
     description: str
     duration: float
 
 
 def dynamic_action_factory(actions: list[str]) -> str:
-    src = inspect.getsource(Action)
+    src = inspect.getsource(AWSAPICallAction)
     actions_list_type = (
         "Literal[" + ",".join((f"{action!r}" for action in actions)) + "]"
     )
@@ -138,12 +138,12 @@ class Task(BaseModel):
     description: str
         The intent of the task. Please be detailed and verbose when describing the intent.
     actions: list[str]
-        A list of actions that must be completed to complete the task.
+        A list of AWS API calls that must be completed to complete the task.
     """
 
     name: str
     description: str
-    actions: list[Action]
+    actions: list[AWSAPICallAction]
 
 
 class Objective(BaseModel):
@@ -205,19 +205,19 @@ class User(ABC):
         for action in task.actions:
             await self.perform_action(action)
 
-    def _perform_action(self, action: Action):
+    def _perform_action(self, action: AWSAPICallAction):
         return (self._mock_action if self.mock_actions else self._make_api_call)(action)
 
-    async def _mock_action(self, action: Action):
+    async def _mock_action(self, action: AWSAPICallAction):
         """Mock an action by logging it to a file."""
         self.logger.info(f"Mocking action: {action.name}...")
         await asyncio.sleep(1)
 
     @abstractmethod
-    async def _make_api_call(self, action: Action, max_retries: int = 3) -> Objective:
+    async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3) -> Objective:
         pass
 
-    async def perform_action(self, action: Action):
+    async def perform_action(self, action: AWSAPICallAction):
         # Add random noise to action.duration
         action.duration = min(action.duration, 3)
 
@@ -261,27 +261,30 @@ class User(ABC):
             self.objectives.append(f"{objective.name}: {objective.description}")
 
 
-class PythonBoto3APICall(BaseModel):
-    """Python Boto3 API Call
+class Boto3APIServiceMethod(BaseModel):
+    """Python Boto3 Service and Method
 
     Params
     ------
-    service: str
+    aws_service: str
         The AWS service to call. For s3:ListBuckets, this would be "s3".
-    method: str
-        The service method to call. For s3:ListBuckets, this would be "list_buckets".
+    aws_method: str
+        The AWS service method name. For s3:ListBuckets, this would be "ListBuckets".
+    boto3_method: str
+        The service method to call in Boto3. For s3:ListBuckets, this would be "list_buckets".
         I should be able to use `getattr(boto3.client(service), method)` to get the method.
-    kwargs: dict[str, Any]
-        The kwargs to pass to the action.
-
     """
 
-    service: str
-    method: str  # Lower snake case AWS client methods
-    kwargs: dict[str, Any]
+    aws_service: str
+    aws_method: str
+    boto3_method: str  # Lower snake case AWS client methods
 
 
 class AWSUser(User):
+
+    @abstractmethod
+    def get_tf_script(self):
+        pass
 
     def get_boto3_client(self, service: str):
         creds = load_lab_credentials(is_compromised=False)
@@ -292,45 +295,83 @@ class AWSUser(User):
         )
         return client
 
-    async def _make_api_call(self, action: Action, max_retries: int = 3):
+    async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3):
         """Make AWS Boto3 API call."""
         error = None
+        error_msg = ""
         for _ in range(max_retries):
             system_context = "You are an expert at performing AWS API calls."
-            error_msg = (
-                (
+            if error is not None:
+                error_msg = (
                     f"\bThere was an error in the previous API call:"
                     f"\n```\n{error}\n```"
                     f"\nPlease amend your API call and try again.\n"
                 )
-                if error is not None
-                else ""
-            )
-            prompt = textwrap.dedent(
+            api_call_prompt = textwrap.dedent(
                 f"""
                 Your objective is to perform the following AWS API call using the python3 boto3 client with the objective:
                 Action: {action.name}
                 Objective: {action.description}
                 {error_msg}
-                Please describe a PythonBoto3APICall according to the following pydantic model.
+                Please describe a Boto3APIServiceMethod according to the following pydantic model.
                 ```
-                {model_as_text(PythonBoto3APICall)}
+                {model_as_text(Boto3APIServiceMethod)}
                 ```
                 """
             )
-            args = await async_openai_call(
-                prompt, system_context=system_context, response_format="json_object"
-            )
             try:
-                service = args.pop("service")
-                method = args.pop("method")
-                kwargs = args.pop("kwargs")
-                client = self.get_boto3_client(service)
-                fn = getattr(client, method)
-                result = fn(**kwargs)
-                return result
+                # Get AWS service and method
+                service_method = await async_openai_call(
+                    api_call_prompt,
+                    system_context=system_context,
+                    response_format="json_object"
+                )
+                aws_service = service_method["aws_service"]
+                aws_method = service_method["aws_method"]
+                boto3_method = service_method["boto3_method"]
+                client = self.get_boto3_client(aws_service)
+                aws_method_call = getattr(client, boto3_method)
+                tf_state = self.get_terraform_state()
+
+                # Get schema of AWS method via botocore input_shapes
+                input_shape = client.meta.service_model.operation_model(aws_method).input_shape.members
+                request_params_prompt = textwrap.dedent(
+                    f"""
+                    Your objective is to perform the following AWS API call using the python3 boto3 client with the objective:
+                    Action: {action.name}
+                    Objective: {action.description}
+                    AWS Service: {aws_service}
+                    AWS Method: {aws_method}
+                    Boto3 Method: {boto3_method}
+                    {error_msg}
+
+                    Please generate a structured JSON response of request parameters given the fields:
+                    {list(input_shape.keys())}
+
+                    You are only allowed to interact with resources specified in the Terraform state file:
+                    ```
+                    {tf_state}
+                    ```
+                    """
+                )
+                request_parameters = await async_openai_call(
+                    request_params_prompt,
+                    system_context=system_context,
+                    response_format="json_object"
+                )
+                # Make call
+                self.logger.info(
+                    "🤖 Call %s:%s using Boto3 with request parameters: %s",
+                    aws_service, aws_method, request_parameters
+                )
+                # aws_method_call(**request_parameters)
+
+            except KeyError as e:
+                self.logger.exception("Failed to retrieve `service` or `method`")
+                error = e
+
             except Exception as e:
-                self.logger.error(f"Error in boto3 api call: {e}")
+                self.logger.exception("Error in boto3 api call")
                 error = e
 
 
@@ -358,6 +399,9 @@ class AWSAssumeRoleUser(AWSUser):
 
 
 class NormalAWSUser(AWSUser):
+
+    def get_tf_script(self):
+        raise NotImplementedError
 
     async def get_objective(self) -> Objective:
         """Get an objective, dictated by the background/persona of the user."""
