@@ -168,8 +168,8 @@ class User(ABC):
     def __init__(
         self,
         name: str,
-        policy: dict[str, Any],
-        background: str,
+        policy: dict[str, Any] | None = None,
+        background: str | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
         mock_actions: bool = False

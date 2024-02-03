@@ -69,12 +69,13 @@ class NoisyStratusUser(AWSUser):
         max_actions: int | None = None,
         mock_actions: bool = False
     ):
-        self.name = name
         self.technique_id = technique_id
-        self.max_tasks = max_tasks
-        self.max_actions = max_actions
-        self.mock_actions = mock_actions
-        self.objectives: list[str] = []
+        super().__init__(
+            name=name,
+            max_tasks=max_tasks,
+            max_actions=max_actions,
+            mock_actions=mock_actions
+        )
 
     def set_background(self) -> str:
         stratus_show_output = subprocess.run([
