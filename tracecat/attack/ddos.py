@@ -9,11 +9,10 @@ import random
 import subprocess
 import shutil
 from datetime import datetime
-from pathlib import Path
 
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
-from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
+from tracecat.config import TRACECAT__LAB_DIR, STRATUS__HOME_DIR, path_to_pkg
 from tracecat.credentials import assume_aws_role, load_lab_credentials
 from tracecat.logger import standard_logger
 from tracecat.lab import _deploy_lab
@@ -92,14 +91,13 @@ def _run_stratus_cmd(
     aws_default_region: str | None = None
 ):
     aws_default_region = aws_default_region or os.environ["AWS_DEFAULT_REGION"]
-    stratus_dir_path = Path(os.path.expanduser("~")) / ".stratus-red-team"
-    os.makedirs(stratus_dir_path, exist_ok=True)
+    volume_path = f"{STRATUS__HOME_DIR}:/root/.stratus-red-team"
     parent_cmd = [
         "docker",
         "run",
         "--rm",
         "-v",
-        f"{stratus_dir_path}:/root/.stratus-red-team",
+        volume_path,
         "-e",
         f"AWS_ACCESS_KEY_ID={aws_access_key_id}",
         "-e",
