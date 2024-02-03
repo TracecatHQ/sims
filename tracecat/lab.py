@@ -5,8 +5,7 @@ import shutil
 import polars as pl
 import subprocess
 from tenacity import retry, stop_after_attempt
-from datetime import datetime, timedelta
-from enum import StrEnum
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -75,6 +74,10 @@ def _deploy_lab() -> Path:
 
     Assumes lab project files already configured and Terraform in Docker is available.
     """
+
+    logger.info("🚧 Initialize Terraform project")
+    _run_terraform(["init"])
+
     # Terraform plan (safety)
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform plan")
@@ -113,10 +116,7 @@ def initialize_lab(scenario_id: str):
     project_path = _scenario_to_infra_path(scenario_id=scenario_id)
     shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
 
-    logger.info("🚧 Initialize Terraform project")
-    _run_terraform(["init"])
-
-    logger.info("🚧 Deploy Terraform project")
+    # Deploy laab
     _deploy_lab()
 
 
