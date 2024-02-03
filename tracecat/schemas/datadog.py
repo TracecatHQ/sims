@@ -2,18 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-Status = Literal["info", "low", "medium", "high", "critical"]
-Aggregation = Literal[
-    "count",
-    "cardinality",
-    "sum",
-    "max",
-    "new_value",
-    "geo_data",
-    "event_count",
-    "none",
-]
-
 
 class Case(BaseModel):
     """Cases for generating signals."""
@@ -21,7 +9,7 @@ class Case(BaseModel):
     condition: str | None = None
     name: str | None = None
     notifications: list[str] | None = None
-    status: Status | None = None
+    status: Literal["info", "low", "medium", "high", "critical"] | None = None
 
 
 class ComplianceSignalOptions(BaseModel):
@@ -66,7 +54,7 @@ class RootQuery(BaseModel):
 
 class ThirdPartyRuleOptions(BaseModel):
     defaultNotifications: list[str] | None = None
-    defaultStatus: Status | None = None
+    defaultStatus: Literal["info", "low", "medium", "high", "critical"] | None = None
     rootQueries: list[RootQuery] | None = None
     signalTitleTemplate: str | None = None
 
@@ -74,7 +62,16 @@ class ThirdPartyRuleOptions(BaseModel):
 class QueryMatchingRule(BaseModel):
     """Query for matching rule."""
 
-    aggregation: Aggregation | None = None
+    aggregation: Literal[
+        "count",
+        "cardinality",
+        "sum",
+        "max",
+        "new_value",
+        "geo_data",
+        "event_count",
+        "none",
+    ] | None = None
     distinctFields: list[str] | None = None
     groupByFields: list[str] | None = None
     metric: str | None = None
@@ -86,7 +83,16 @@ class QueryMatchingRule(BaseModel):
 class QueryMatchingRuleOnSignals(BaseModel):
     """Query for matching rule on signals."""
 
-    aggregation: Aggregation | None = None
+    aggregation: Literal[
+        "count",
+        "cardinality",
+        "sum",
+        "max",
+        "new_value",
+        "geo_data",
+        "event_count",
+        "none",
+    ] | None = None
     correlatedByFields: list[str] | None = None
     correlatedQueryIndex: int | None = None
     metrics: list[str] | None = None
@@ -101,7 +107,7 @@ class ThirdPartyCase(BaseModel):
     name: str | None = None
     notifications: list[str] | None = None
     query: str | None = None
-    status: Status | None = None
+    status: Literal["info", "low", "medium", "high", "critical"] | None = None
 
 
 class Options(BaseModel):
