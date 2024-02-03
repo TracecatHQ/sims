@@ -136,7 +136,7 @@ class NoisyStratusUser(AWSUser):
 
             {model_as_text(Task)}
 
-            {dynamic_action_factory(self.policy["Statement"][0]["Action"])}
+            {dynamic_action_factory(MOST_COMMON_AWS_API_CALLS)}
             ```
 
             You are to generate a structured JSON response.
