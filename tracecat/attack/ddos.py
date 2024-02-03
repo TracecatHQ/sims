@@ -226,8 +226,6 @@ async def ddos(
             )
         except asyncio.TimeoutError:
             logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
-        finally:
-            clean_up_stratus(technique_id=technique_id)
 
     # Final clean up
     clean_up_stratus(include_all=True)
