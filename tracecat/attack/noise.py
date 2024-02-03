@@ -106,6 +106,7 @@ class NoisyStratusUser(AWSAssumeRoleUser):
             system_context=system_context,
             response_format="text",
         )
+        self.logger.info(result)
         self.background = result
 
     async def get_objective(self) -> Objective:
