@@ -3,6 +3,10 @@ import subprocess
 from pathlib import Path
 from tracecat.config import path_to_pkg
 
+from tracecat.logger import standard_logger
+
+logger = standard_logger(__name__, level="INFO")
+
 
 class TerraformRunError(Exception):
     pass
@@ -32,19 +36,13 @@ def run_terraform(cmds: list[str], chdir: str | None = None):
     
 
 def show_terraform_state(path: str):
-    # NOTE: This is agnostic to volume path
-    cmds = [
-        "docker",
-        "run",
-        "--rm",
-        "-v",
-        f"{path}:/workspace",
-        "hashicorp/terraform:latest",
-        "show"
-    ]
+    # Assumes Terraform installed
+    os.path.exists(path)
+    cmds = ["terraform", "show"]
     process = subprocess.run(
         cmds,
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
+        cwd=path,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True  # Ensure the output is returned as a string
@@ -52,4 +50,5 @@ def show_terraform_state(path: str):
     if "Error" in process.stdout or "Error" in process.stderr:
         raise TerraformRunError(process.stdout)
     state = process.stdout
+    logger.info("🚧 Got Terraform state:\n%s", state)
     return state
