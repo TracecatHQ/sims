@@ -11,7 +11,8 @@ import subprocess
 import shutil
 from pathlib import Path
 
-from tracecat.attack.noise import NoisyUser
+from tracecat.attack.detonation import DelayedDetonator
+from tracecat.attack.noise import NoisyStratusUser
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.credentials import assume_aws_role, load_lab_credentials
 from tracecat.logger import standard_logger
@@ -151,6 +152,21 @@ def detonate_stratus(technique_id: str):
     )
 
 
+async def simulate_stratus(technique_id: str, delay: int):
+    normal_user = NoisyStratusUser(
+        name="redpanda",
+        technique_id=technique_id
+    )
+    normal_user.set_background()
+    denotator = DelayedDetonator(
+        delay=delay,
+        detonate=detonate_stratus,
+        technique_id=technique_id
+    )
+    tasks = [normal_user, denotator]
+    await asyncio.gather(*[task.run() for task in tasks])
+
+
 def clean_up_stratus(technique_id: str):
     # NOTE: We clean up infra using server admin
     # to avoid this being logged into scored alerts
@@ -161,7 +177,16 @@ def clean_up_stratus(technique_id: str):
     )
 
 
-async def ddos(n_attacks: int = 10, delay: int = 1):
+async def ddos(
+    n_attacks: int = 10,
+    timeout: int | None = None,
+    delay: int | None = None,
+    max_tasks: int | None = None,
+    max_actions: int | None = None,
+):
+
+    timeout = timeout or 100
+    delay = delay or 50
 
     # Create lab admin credentials
     initialize_stratus_lab()
@@ -169,9 +194,23 @@ async def ddos(n_attacks: int = 10, delay: int = 1):
     # Run simulation
     for _ in range(n_attacks):
         technique_id = random.choice(AWS_ATTACK_TECHNIQUES)
+
+        logger.info("🎲 Run simulation %r", technique_id)
         warm_up_stratus(technique_id=technique_id)
-        detonate_stratus(technique_id=technique_id)
-        # ADD NORMAL BEHAVIOR
+        try:
+            await asyncio.wait_for(
+                simulate_stratus(
+                    technique_id=technique_id,
+                    delay=delay,
+                    max_tasks=max_tasks,
+                    max_actions=max_actions,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
+
+        simulate_stratus(technique_id=technique_id)
         clean_up_stratus(technique_id=technique_id)
 
     # Final clean up

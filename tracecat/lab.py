@@ -146,7 +146,7 @@ async def simulate_lab(
             timeout=timeout,
         )
     except asyncio.TimeoutError:
-        logger.info("✅ Lab timed out successfully after %s seconds", timeout)
+        logger.info("✅ Simulation timed out successfully after %s seconds", timeout)
 
 
 def get_lab_users(scenario_id: str) -> pl.DataFrame:
@@ -264,11 +264,10 @@ async def run_lab(
 
     Parameters
     ----------
-    skip_run : bool
+    skip_simulation : bool
         Defaults to False. If True, assumes simulation is complete
         and skips straight to evaluation.
     """
-    timeout = timeout or 300
     if not skip_simulation:
         logger.info("🎲 Run lab simulation")
         task_retries = task_retries or 2
