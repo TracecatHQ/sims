@@ -112,6 +112,7 @@ class NoisyStratusUser(AWSUser):
             "You are also an expert at breaking down objectives into smaller tasks."
             "You are creative and like to think outside the box."
         )
+        api_calls_list = "\n".join(f"- {item}" for item in MOST_COMMON_AWS_API_CALLS)
         prompt = textwrap.dedent(
             f"""
             Your task is to predict what a user with the following background might realistically do:
@@ -124,7 +125,7 @@ class NoisyStratusUser(AWSUser):
 
             You must either select from the following list of AWS API calls:
             ```
-            {"\n".join(f"- {item}" for item in MOST_COMMON_AWS_API_CALLS)}
+            {api_calls_list}
             ```
             or any AWS API call explicitly mentioned in the "Background".
 
