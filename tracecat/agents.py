@@ -28,9 +28,9 @@ Simpler kflow (less api calls):
 from __future__ import annotations
 
 import asyncio
-import datetime
 import random
 from abc import abstractmethod, ABC
+from datetime import datetime
 import boto3
 import inspect
 import textwrap

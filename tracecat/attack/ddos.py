@@ -4,11 +4,11 @@ This is a pentesting tool that assumes full visibility into your AWS inventory.
 """
 
 import asyncio
-import datetime
 import os
 import random
 import subprocess
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 from tracecat.attack.detonation import DelayedDetonator
