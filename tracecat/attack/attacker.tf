@@ -4,8 +4,8 @@ data "aws_region" "current" {}
 
 data "aws_caller_identity" "current" {}
 
-resource "aws_iam_user" "tracecat_lab_admin_attacker" {
-  name = "tracecat-lab-admin-attacker"
+resource "aws_iam_user" "tracecat_lab_admin" {
+  name = "tracecat-lab-admin"
 }
 
 resource "aws_iam_role" "allowed_region_admin_role" {
@@ -18,7 +18,7 @@ resource "aws_iam_role" "allowed_region_admin_role" {
       {
         Effect = "Allow",
         Principal = {
-          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${aws_iam_user.tracecat_lab_admin_attacker.name}"
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${aws_iam_user.tracecat_lab_admin.name}"
         },
         Action = "sts:AssumeRole"
       }
@@ -53,7 +53,7 @@ resource "aws_iam_role_policy" "region_restriction" {
 
 resource "aws_iam_user_policy" "allow_assume_admin_role" {
   name = "AllowAssumeAdminRole"
-  user = aws_iam_user.tracecat_lab_admin_attacker.name
+  user = aws_iam_user.tracecat_lab_admin.name
 
   policy = jsonencode({
     Version = "2012-10-17",
@@ -73,11 +73,11 @@ resource "aws_iam_role_policy_attachment" "admin_policy_attachment" {
 }
 
 resource "aws_iam_access_key" "normal" {
-  user = "${aws_iam_user.tracecat_lab_admin_attacker.name}"
+  user = "${aws_iam_user.tracecat_lab_admin.name}"
 }
 
 resource "aws_iam_access_key" "compromised" {
-  user = "${aws_iam_user.tracecat_lab_admin_attacker.name}"
+  user = "${aws_iam_user.tracecat_lab_admin.name}"
 }
 
 resource "local_file" "credentials" {
