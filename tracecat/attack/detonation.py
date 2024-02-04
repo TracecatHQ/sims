@@ -13,4 +13,4 @@ class DelayedDetonator:
         """Detonate attack after `delay`.
         """
         await asyncio.sleep(self.delay)
-        await asyncio.to_thread(self._detonate(**self._detonate_kwargs))
+        await asyncio.to_thread(self._detonate, **self._detonate_kwargs)
