@@ -19,6 +19,7 @@ from sse_starlette.sse import EventSourceResponse
 from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
 from tracecat.autotuner import optimizer
 from tracecat.config import TRACECAT__API_DIR, TRACECAT__AUTOTUNER_DIR
+from tracecat.attack.ddos import ddos, clean_up_stratus
 from tracecat.lab import (
     LabResults,
     clean_up_lab,
