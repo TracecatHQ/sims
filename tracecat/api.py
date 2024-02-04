@@ -189,7 +189,7 @@ async def create_ddos_lab(
 
 
 @app.delete("/lab")
-def delete_lab():
+def delete_lab(force: bool = False):
     """Destroy live infrastructure and stop Terraform Docker container.
 
     Raises
@@ -197,8 +197,15 @@ def delete_lab():
     FailedTerraformDestory if `terraform destroy` was unsuccessful.
     Container is not stopped in this case.
     """
-    clean_up_lab()
+    clean_up_lab(force=force)
     clean_up_stratus(include_all=True)
+    if force:
+        logger.info("✅ Lab cleanup complete. What will you break next?")
+    else:
+        logger.info(
+            "✅🛎️ Infrastructure cleanup complete."
+            " Rerun clean up with `force=True` to destroy remaining artifacts."
+        )
 
 
 # Live Agent Feeds

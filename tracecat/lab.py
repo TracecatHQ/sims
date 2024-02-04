@@ -176,9 +176,3 @@ def clean_up_lab(force: bool = False):
             shutil.rmtree(TRACECAT__LAB_DIR)
         except FileNotFoundError:
             logger.info("❗ No lab directory found")
-        logger.info("✅ Lab cleanup complete. What will you break next?")
-    else:
-        logger.info(
-            "✅🛎️ Infrastructure cleanup complete."
-            " Rerun clean up with `force=True` to destroy remaining artifacts."
-        )
