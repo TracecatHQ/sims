@@ -23,6 +23,7 @@ dynamic = [
   "version",
 ]
 dependencies = [
+  "beautifulsoup4",
   "connectorx",
   "cryptography",
   "docker",
