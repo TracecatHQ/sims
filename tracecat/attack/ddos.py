@@ -196,9 +196,10 @@ def upload_lab_logs():
     # Create S3 Key
     now = datetime.utcnow()
     date_text = now.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
-    ts = now - timedelta(minutes=now.minute % 5).replace(seconds=0, microseconds=0)
+    ts = (now - timedelta(minutes=now.minute % 5)).replace(second=0, microsecond=0)
     ts_text = ts.strftime("%Y%m%dT%H%M%Z")
-    uuid = secrets.token_urlsafe(16)
+    prefix = "tracecat"
+    uuid = prefix + secrets.token_urlsafe(16 - len(prefix))
     file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid}.json.gz"
     key = f"{bucket_name}/AWSLogs{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
 
@@ -217,7 +218,16 @@ def upload_lab_logs():
 
     # Upload gzipped json
     s3_client = boto3.client("s3")
-    s3_client.put_object(Body=gzipped_records, Bucket=bucket_name, Key=key, ContentEncoding="gzip", ContentType="application/json")
+    s3_client.put_object(
+        Body=gzipped_records,
+        Bucket=bucket_name,
+        Key=key,
+        ContentEncoding="gzip",
+        ContentType="application/json"
+    )
+
+    # Delete old logs
+    os.remove(njson_logs_path)
 
 
 async def ddos(
@@ -238,10 +248,11 @@ async def ddos(
     for _ in range(n_attacks):
         technique_id = random.choice(AWS_ATTACK_TECHNIQUES)
 
-        logger.info("🎲 Run simulation %r", technique_id)
+        logger.info("🚧 Warm up infrastructure %r", technique_id)
         warm_up_stratus(technique_id=technique_id)
         
         try:
+            logger.info("🎲 Run simulation %r", technique_id)
             await simulate_stratus(
                 technique_id=technique_id,
                 delay=delay,
@@ -249,9 +260,11 @@ async def ddos(
                 max_actions=max_actions,
                 timeout=timeout
             )
-            upload_lab_logs()
         except asyncio.TimeoutError:
             logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
+        finally:
+            logger.info("🗂️ Upload logs to S3 %r", technique_id)
+            upload_lab_logs()
 
     # Final clean up
     clean_up_stratus(include_all=True)
