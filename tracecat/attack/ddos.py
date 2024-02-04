@@ -144,21 +144,11 @@ def detonate_stratus(technique_id: str):
     aws_access_key_id = creds["redpanda"]["aws_access_key_id"]
     aws_secret_access_key = creds["redpanda"]["aws_secret_access_key"]
 
-    # Assume role and get session token
-    ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    session_creds = assume_aws_role(
-        aws_access_key_id=aws_access_key_id,
-        aws_secret_access_key=aws_secret_access_key,
-        aws_role_name="tracecat-lab-admin-role",
-        aws_role_session_name=f"tracecat-lab-attacker-{ts}",
-    )
-
     # Create infra
     _run_stratus_cmd(
         cmds=["warmup", technique_id],
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        aws_session_token=session_creds["aws_session_token"]
     )
 
 

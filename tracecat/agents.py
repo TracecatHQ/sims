@@ -310,15 +310,7 @@ class AWSUser(User):
         creds = load_lab_credentials(is_compromised=False)
         aws_access_key_id = creds[self.name]["aws_access_key_id"]
         aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
-        # Assume role and get session token
-        ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        session_creds = assume_aws_role(
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_role_name="tracecat-lab-admin-role",
-            aws_role_session_name=f"tracecat-lab-normal-{ts}",
-        )
-        return session_creds
+        return {"aws_access_key_id": aws_access_key_id, "aws_secret_access_key": aws_secret_access_key}
 
     async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3):
         """Make AWS API call."""
@@ -348,9 +340,8 @@ class AWSUser(User):
         terraform_state = self.terraform_state
 
         # Get AWS user credentials
-        session_creds = self.get_aws_credentials()
-        aws_account_id = session_creds.get("aws_account_id")
-        aws_access_key_id = session_creds.get("aws_access_key_id")
+        creds = self.get_aws_credentials()
+        aws_access_key_id = creds.get("aws_access_key_id")
 
         # Generate CloudTrail log
         ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
@@ -364,7 +355,6 @@ class AWSUser(User):
             ```
             Action: {action.name}
             Objective: {action.description}
-            AWS Account ID: {aws_account_id}
             AWS Access Key ID: {aws_access_key_id}
             AWS Service: {aws_service}
             AWS Method: {aws_method}

@@ -283,7 +283,7 @@ def clean_up_lab(force: bool = False):
     """
     # Terraform destroy
     logger.info("🧹 Destroy lab infrastructure")
-    run_terraform(["destroy"], chdir="terraform")
+    run_terraform(["destroy", "-auto-approve"], chdir="terraform")
 
     # NOTE: ONLY SPIN DOWN DOCKER AND
     # DELETE LAB FILES (which includes tfstate)
