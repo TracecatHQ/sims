@@ -129,6 +129,8 @@ async def recommend_new_rule(
         Your goal is to suggest a new {variant.capitalize()} SIEM rule that has a {rule_improvement} than the original rule.
         The new rule that you suggest will be sent to the {variant.capitalize()} SIEM to run in production.
 
+        You MUST only amend the `queries`, `filters`, and `casees` fields of the rule.
+
         The rule syntax is documented below:
         {rule_syntax}
 
