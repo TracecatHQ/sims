@@ -325,6 +325,15 @@ def get_autotune_banner():
 
 @app.get("/autotune/rules/")
 def get_all_rules():
+    """Get all rules.
+
+    The assumption is all rules have already been evaluated ahead of time.
+    This endpoint should return all rules with evaluation metrics done.
+    The user should only then commit the new rules.
+
+    Here we set the actual number of alerts.
+    Whatever is shown on the UI should be inflated by a random number.
+    """
     df = (
         pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
         .drop_nulls()
@@ -346,10 +355,13 @@ def get_all_rules():
         df.lazy()
         .rename(PY_TO_TS_SCHEMA)
         .with_columns(
-            score=np.random.randint(0, 100, df.height),
-            status=pl.lit("active"),
-            timeSavable=np.random.randint(30, 100, df.height),
+            score=np.random.randint(0, 65, df.height),
+            status=pl.lit("todo"),
+            alerts=np.random.randint(4, 15, df.height),
             severity=np.random.choice(["low", "medium", "high"], df.height),
+            timeSavable=pl.lit(None),
+            tunedScore=pl.lit(None),
+            tunedAlerts=pl.lit(None),
         )
         .collect(streaming=True)
         .to_dicts()
