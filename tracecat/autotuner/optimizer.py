@@ -2,34 +2,28 @@ import asyncio
 import json
 import os
 import textwrap
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Awaitable, Callable, Literal, Self, TypeVar, get_args, get_origin
+from uuid import uuid4
 
 import httpx
+import markdown
 import orjson
 import polars as pl
-from pydantic import BaseModel, field_serializer
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
+from pydantic import BaseModel, Field, field_serializer
 
 from tracecat.agents import model_as_text
 from tracecat.autotuner.types import RuleType
-from tracecat.config import TRACECAT__AUTOTUNER_DIR
+from tracecat.config import TRACECAT__AUTOTUNER_DIR, path_to_pkg
 from tracecat.llm import async_openai_call
 from tracecat.logger import standard_logger
 from tracecat.schemas.datadog import RuleUpdateRequest
 
+logger = standard_logger(__name__)
+
 Rule = TypeVar("Rule", bound=RuleUpdateRequest)
 Q = TypeVar("Q", bound=BaseModel)
-
-OptimizerStrategy = Literal["cherry_pick", "user_select"]
-logger = standard_logger(__name__)
 
 
 def _is_pydantic_model(cls: type) -> bool:
@@ -89,6 +83,7 @@ class RuleUpdateRec(BaseModel):
 
     """
 
+    id: str = Field(default_factory=lambda _: f"rec-{uuid4()}")
     rule_id: str
     rule: RuleUpdateRequest
     explanation: str
@@ -114,6 +109,10 @@ async def recommend_new_rule(
     )
     additional_context = "Any additional context goes here."
     rule_improvement = "lower false positive rate"
+    # Read markdown file
+    path = path_to_pkg() / "tracecat/schemas/datadog_log_search_syntax.md"
+    with path.open("r") as f:
+        rule_syntax = markdown.markdown(f.read())
     prompt = textwrap.dedent(
         f"""
         Your objective is to suggest an improved {variant.capitalize()} SIEM rule.
@@ -130,6 +129,9 @@ async def recommend_new_rule(
         Your goal is to suggest a new {variant.capitalize()} SIEM rule that has a {rule_improvement} than the original rule.
         The new rule that you suggest will be sent to the {variant.capitalize()} SIEM to run in production.
 
+        The rule syntax is documented below:
+        {rule_syntax}
+
         Please describe a `{RuleUpdateRec.__name__}` according to the following pydantic model.
         ```
         {_get_model_dependencies_string(RuleUpdateRequest)}
@@ -138,7 +140,6 @@ async def recommend_new_rule(
         ```
         """
     )
-    logger.info(f"Prompt:\n{prompt}")
 
     response = await async_openai_call(
         prompt,
@@ -230,34 +231,65 @@ async def translate_datadog_rule(rule: RuleUpdateRequest) -> PythonPolarsQuery:
 # Going to use LLM to generate datadog query directly, and run the query on the logs search API.
 
 
-@retry(
-    wait=wait_exponential(multiplier=1, max=60),
-    stop=stop_after_attempt(5),  # Stop after 5 tries
-    retry=retry_if_exception_type(httpx.HTTPStatusError),  # Retry on HTTPStatusError
-)
-async def _make_request(url, headers, body):
+async def handle_rate_limiting(response: httpx.Response, rule_id: str):
+    """Handles waiting based on Datadog's rate limiting response headers."""
+    if "X-RateLimit-Reset".lower() in response.headers:
+        wait_time = int(response.headers["X-RateLimit-Reset".lower()])
+        logger.info(f"{rule_id}: Rate limited. Waiting for {wait_time} seconds...")
+        await asyncio.sleep(wait_time)
+
+
+# @retry(
+#     wait=wait_random_exponential(multiplier=1, max=60),
+#     stop=stop_after_attempt(5),  # Stop after 5 tries
+#     retry=retry_if_exception_type(httpx.HTTPStatusError),  # Retry on HTTPStatusError
+#     before=before_log(logger, logging.INFO),
+# )
+async def _make_request(url: str, headers: dict, body: dict, tags: dict | None = None):
+    tags = tags or {}
+    rule_id = tags.get("id")
+    max_retries = 10
     async with httpx.AsyncClient(http2=True) as client:
-        response = await client.post(url, headers=headers, data=orjson.dumps(body))
-        response.raise_for_status()
-        return response.json()
+        for i in range(max_retries):
+            try:
+                logger.info(f"{rule_id}: Request {i}/{max_retries}...")
+                response = await client.post(
+                    url, headers=headers, data=orjson.dumps(body)
+                )
+
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
+                    await handle_rate_limiting(response, rule_id)
+                    continue
+                logger.exception(f"{rule_id}: Failed to make request. {response.text}")
+                raise e
 
 
 async def _get_paginated_endpoint(url: str, headers: dict, body: dict):
-    # Assuming `url`, `headers`, and initial `body` are already defined
     all_events = []
     while True:
-        response_json = await _make_request(url, headers, body)
+        response = await _make_request(url, headers, body)
+        response_json = response.json()
 
         events = response_json["data"]
-        if events is None or not events:
+        if not events:
             break
         all_events.extend(events)
         cursor = response_json.get("meta", {}).get("page", {}).get("after")
         if cursor is None:
             break  # No more pages
         body["page"] = {"cursor": cursor}
-        time.sleep(1)
+        await asyncio.sleep(1)
     return all_events
+
+
+async def _get_endpoint(url: str, headers: dict, body: dict, tags: dict | None = None):
+    response = await _make_request(url, headers, body, tags)
+    response_json = response.json()
+    events = response_json["data"]
+    return events
 
 
 def get_queries_dir() -> Path:
@@ -269,6 +301,7 @@ def get_queries_dir() -> Path:
 async def run_datadog_query_on_logs(
     start: datetime,
     end: datetime,
+    rule_id: str,
     rule: Rule,
     limit: int = 1000,
 ) -> tuple[Path | None, int | None]:
@@ -294,7 +327,6 @@ async def run_datadog_query_on_logs(
     query_string = " ".join(q.query for q in queries if hasattr(q, "query") and q.query)
     full_filter_query = f"{filter_string} {query_string}"
 
-    logger.info(f"🐶 Filter query: {full_filter_query}")
     body = {
         "filter": {
             "query": full_filter_query,
@@ -303,17 +335,17 @@ async def run_datadog_query_on_logs(
         },
         "page": {"limit": limit},
     }
-    logger.info(f"🐶 Body: {body}")
+    logger.info(f"🐶 Filter query: {full_filter_query}")
     logger.info("🐶 Querying Datadog logs between [%s, %s]", start, end)
 
-    events = await _get_paginated_endpoint(url, headers, body)
+    events = await _get_endpoint(url, headers, body, tags={"id": rule_id})
 
     if not events:
-        logger.info("No events found for the query.")
+        logger.info(f"{rule_id}: No events found for the query.")
         return None, None
 
     df = pl.from_dicts(events).unnest("attributes")
-    logger.info(df)
+    logger.info(f"{rule_id}: Found %d events for the query.", df.height)
     file_path = (
         get_queries_dir() / f"{rule.name}__{datetime.utcnow().isoformat()}.parquet"
     )
@@ -360,7 +392,9 @@ async def execute_query(
     start: datetime, end: datetime, rule_rec: RuleUpdateRec
 ) -> QueryResult:
     """Execute the query and add the number of alerts."""
-    path, n_alerts = await run_datadog_query_on_logs(start, end, rule_rec.rule)
+    path, n_alerts = await run_datadog_query_on_logs(
+        start, end, rule_rec.rule_id, rule_rec.rule
+    )
     return QueryResult(rule_id=rule_rec.rule_id, path=path, n_alerts=n_alerts)
 
 
@@ -371,6 +405,7 @@ async def execute_queries(
     # NOTE: This is likely IO bound because we're hitting DD api
 
     tasks = [execute_query(start, end, rule_rec) for rule_rec in rule_recs]
+    logger.info("Executing %d queries...", len(tasks))
     return await asyncio.gather(*tasks)
 
 
@@ -445,7 +480,7 @@ async def user_select_strategy(
 ) -> list[OptimizerResult]:
     """Returns list of rule recommendations for the user to select."""
 
-    logger.info(f"Generating recommendations for rule {rule.name}...")
+    logger.info(f"Generating recommendations for rule {rule_id}...")
 
     filename = f"{variant}__{rule_id}.json"
     recs_path = get_recs_dir() / filename
@@ -460,11 +495,15 @@ async def user_select_strategy(
         recs = [RuleUpdateRec.model_validate(r) for r in obj]
 
     # Execute all queries and get the results
-    logger.info(f"Executing queries for rule {rule.name}...")
+    logger.info(f"Executing queries for rule {rule_id}...")
     end = datetime.utcnow() + timedelta(days=1)
     start = end - timedelta(days=3)
     query_results = await execute_queries(start, end, recs)
+    logger.info(f"Finished executing queries for rule {rule_id}...")
     return OptimizerResult.list_from_query_results(query_results, recs)
+
+
+OptimizerStrategy = Literal["cherry_pick", "user_select"]
 
 
 async def optimize_rule(

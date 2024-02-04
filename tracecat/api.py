@@ -45,9 +45,13 @@ STATISTICS_FILE_PATH.touch(exist_ok=True)
 API_CALL_STATISTICS_FILE_LOCK = asyncio.Lock()
 ACTION_STATISTICS_FILE_LOCK = asyncio.Lock()
 TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
+TRACECAT__JOB_QUEUES: dict[str, asyncio.Queue] = {}
 
 for q in ["statistics", "activity"]:
     TRACECAT__LOG_QUEUES[q] = asyncio.Queue()
+
+for q in ["lab", "optimizer"]:
+    TRACECAT__JOB_QUEUES[q] = asyncio.Queue()
 
 
 async def tail_file_handler():
@@ -84,12 +88,28 @@ async def update_stats_handler():
                 json.dump(data, f)
 
 
+async def optimizer_job_consumer():
+    queue = TRACECAT__JOB_QUEUES["optimizer"]
+    while True:
+        task = await queue.get()
+        logger.info(
+            f"Running optimizer job for rule: {task['id']}. There are {queue.qsize()} jobs left."
+        )
+        coro = task["coro"]
+        try:
+            await coro
+            logger.info(f"Finished running optimizer job for rule: {task['id']}")
+        except Exception as e:
+            logger.error(f"Error running optimizer job for rule: {task['id']}. {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Context manager to run the API for its lifespan."""
     logger.info("Starting API")
     asyncio.create_task(tail_file_handler())
     asyncio.create_task(update_stats_handler())
+    asyncio.create_task(optimizer_job_consumer())
     yield
 
 
@@ -305,42 +325,6 @@ def get_autotune_banner():
 
 @app.get("/autotune/rules/")
 def get_all_rules():
-    new_query = [
-        {
-            "query": "source:(apache OR nginx) (@http.referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http.user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
-            "groupByFields": [],
-            "hasOptionalGroupByFields": False,
-            "distinctFields": [],
-            "metric": None,
-            "metrics": None,
-            "aggregation": "count",
-            "name": "standard_attributes",
-        },
-        {
-            "query": "source:(apache OR nginx) (@http_referer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_referrer:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*) OR @http_user_agent:(*jndi\\:ldap*Base64* OR *jndi\\:rmi*Base64* OR *jndi\\:dns*Base64*))",
-            "groupByFields": [],
-            "hasOptionalGroupByFields": False,
-            "distinctFields": [],
-            "metric": None,
-            "metrics": None,
-            "aggregation": "count",
-            "name": "non_standard_attributes",
-        },
-    ]
-    new_cases = [
-        {
-            "name": "standard attribute query triggered",
-            "status": "medium",
-            "notifications": [],
-            "condition": "standard_attributes > 0",
-        },
-        {
-            "name": "non standard attribute query triggered",
-            "status": "medium",
-            "notifications": [],
-            "condition": "non_standard_attributes > 0",
-        },
-    ]
     df = (
         pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
         .drop_nulls()
@@ -366,8 +350,6 @@ def get_all_rules():
             status=pl.lit("active"),
             timeSavable=np.random.randint(30, 100, df.height),
             severity=np.random.choice(["low", "medium", "high"], df.height),
-            newQueries=pl.lit(new_query),
-            newCases=pl.lit(new_cases),
         )
         .collect(streaming=True)
         .to_dicts()
@@ -398,59 +380,68 @@ def get_rule(id: str):
     return res
 
 
-@app.post("/autotune/optimizer/run-all")
-async def run_optimizer_all():
-    return {"status": "ok"}
-
-
 def get_results_dir(rule_id: str, variant: str = "datadog"):
     path = TRACECAT__AUTOTUNER_DIR / "results" / f"{variant}_{rule_id}"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
+async def run_optimizer_single(rule_id: str):
+    rule_data = get_rule(rule_id)
+    rule = RuleUpdateRequest.model_validate(rule_data)
+
+    opt_results = await optimizer.optimize_rule(
+        rule_id, rule, variant="datadog", strategy="user_select"
+    )
+    with get_results_dir(rule_id).joinpath("results.json").open("w") as f:
+        data = [res.model_dump() for res in opt_results]
+        json.dump(data, f, indent=2)
+        logger.info(f"Successfully wrote {len(data)} options to disk")
+    logger.info(f"Finished running optimizer for rule {rule_id}")
+
+
 @app.post("/autotune/optimizer/run")
-async def run_optimizer(rule_id: str):
+async def run_optimizer(rule_ids: list[str]):
     """Run the optimizer for the given rule and return the recommendation results.
 
     This should trigger a background job.
 
     Additionally saves the recommendation results to a directory.
+
+    For each rule, run the optimizer
+    Optimizer Steps (This is repeated in parallel 10x):
+    1. LLM Suggests a new rule using few show prompting with input/output examples
+      - Optional data enrichment step (RAG, threat intel)
+    2. We now have N new rules. Run these against the datdog API and return the results.
+
     """
-    # For each rule, run the optimizer
-    # Optimizer Steps (This is repeated in parallel 10x):
-    # 1. LLM Suggests a new rule using few show prompting with input/output examples
-    #   - Optional data enrichment step (RAG, threat intel)
-    # 2. We now have N new rules. Run these against the datdog API and return the results.
-    rule_data = get_rule(rule_id)
-    logger.info(json.dumps(rule_data, indent=2))
-    rule = RuleUpdateRequest.model_validate(rule_data)
 
-    # Only optimizing one rule rn
-    opt_results = await optimizer.optimize_rule(
-        rule_id, rule, variant="datadog", strategy="user_select"
-    )
-    # Save this to disk
-    with get_results_dir(rule_id).joinpath("results.json").open("w") as f:
-        data = [res.model_dump() for res in opt_results]
-        logger.info(data)
-        json.dump(data, f, indent=2)
-    return {"status": "ok"}
+    queue = TRACECAT__JOB_QUEUES["optimizer"]
+
+    # NOTE(perf): We should probably batch these 'gather' steps for performance in prod
+    logger.info("Queueing jobs for optimizer evaluation step")
+    for rule_id in rule_ids:
+        queue.put_nowait({"id": rule_id, "coro": run_optimizer_single(rule_id)})
+
+    return {"status": "ok", "message": f"{len(rule_ids)} optimizer jobs completed"}
 
 
-@app.get("/autotune/optimizer/results", response_model=list[optimizer.OptimizerResult])
+@app.get(
+    "/autotune/optimizer/results/{rule_id}",
+    response_model=list[optimizer.OptimizerResult],
+)
 async def get_optimizer_results(rule_id: str):
     """Return the results for the given rule."""
     path = get_results_dir(rule_id) / "results.json"
     with path.open("r") as f:
         data = json.load(f)
-    print(data)
     results = [optimizer.OptimizerResult.model_validate(r) for r in data]
     return results
 
 
 @app.get(
-    "/autotune/optimizer/results/{index}", response_model=optimizer.OptimizerResult
+    "/autotune/optimizer/results/{rule_id}/{index}",
+    response_model=optimizer.OptimizerResult,
 )
 async def get_optimizer_result_by_index(rule_id: str, index: int):
     """Return the index-th result for the given rule."""
