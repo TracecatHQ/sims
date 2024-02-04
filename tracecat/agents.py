@@ -301,7 +301,7 @@ class AWSUser(User):
             response_format="json_object",
             model="gpt-3.5-turbo-1106"
         )
-        self.logger("🎲 Selected action:\n%s", json.dumps(aws_action, indent=2))
+        self.logger.info("🎲 Selected action:\n%s", json.dumps(aws_action, indent=2))
         aws_service = aws_action["aws_service"]
         aws_method = aws_action["aws_method"]
         user_agent = aws_action["user_agent"]
