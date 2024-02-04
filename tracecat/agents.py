@@ -32,7 +32,6 @@ import random
 from pathlib import Path
 from abc import abstractmethod, ABC
 from datetime import datetime
-import boto3
 import inspect
 import textwrap
 import json
@@ -41,11 +40,9 @@ from collections import deque
 from typing import Any, TypeVar
 from typing import Literal
 
-import boto3
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
-from tracecat.credentials import assume_aws_role
 from tracecat.llm import async_openai_call
 from tracecat.logger import ActionLog, composite_logger, file_logger
 from tracecat.credentials import load_lab_credentials
@@ -190,8 +187,6 @@ class User(ABC):
         self.tasks = deque()
         self.objectives: list[str] = []
         self.mock_actions = mock_actions
-        # Set terraform state on init
-        self.terraform_state = show_terraform_state(terraform_path)
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
@@ -204,6 +199,10 @@ class User(ABC):
             file_path=TRACECAT__LAB_ACTIONS_LOGS_PATH,
             log_format="json"
         )
+
+    @property
+    def terraform_state(self):
+        return show_terraform_state(self.terraform_path)
 
     @abstractmethod
     async def get_objective(self) -> Objective:
