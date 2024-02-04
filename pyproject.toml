@@ -29,6 +29,7 @@ dependencies = [
   "fastapi",
   "huggingface",
   "lancedb",
+  "markdown",
   "openai",
   "orjson",
   "polars",
