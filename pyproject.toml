@@ -32,7 +32,6 @@ dependencies = [
   "openai",
   "orjson",
   "polars",
-  "prowler",
   "pyarrow",
   "pydantic",
   "python-dotenv",
