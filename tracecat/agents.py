@@ -289,7 +289,7 @@ class AWSUser(User):
             Action: {action.name}
             Objective: {action.description}
 
-            Please describe a AWSAPIServiceMethod according to the following pydantic model.
+            Describe a `AWSAPIServiceMethod` according to the following pydantic model.
             ```
             {model_as_text(AWSAPIServiceMethod)}
             ```
@@ -322,10 +322,10 @@ class AWSUser(User):
         cloudtrail_docs = load_aws_cloudtrail_docs()
         cloudtrail_prompt = textwrap.dedent(
             f"""
-            You objective is to create realistic AWS CloudTrail JSON log records with `eventTime` set between {start_ts_text} and {end_ts_text}.
-            Use this format:
+            You objective is to create realistic AWS CloudTrail JSON records with `eventTime` set between {start_ts_text} and {end_ts_text}.
+            Generate log records according to the following nested JSON format:
             ```json
-            {{"Records": list of dictionaries}}
+            {{"Records": list of dicts}}
             ```
 
             Each record must conform with the following metadata:
@@ -339,9 +339,9 @@ class AWSUser(User):
             Terraform state:\n{terraform_state}
             ```
 
-            The JSON log must conform with the AWS CloudTrail JSON schema.
-            Please predict a realistic `userAgent` in the JSON log.
-            If applicable, please include realistic `requestParameters` and `responseElements` in the JSON log.
+            The JSON record must conform with the AWS CloudTrail JSON schema.
+            Please predict a realistic `userAgent` in the JSON record.
+            If applicable, please include realistic `requestParameters` and `responseElements` in the JSON record.
 
             You must use the following AWS CloudTrail documentation in HTML as a guide:
             ```html
@@ -353,15 +353,23 @@ class AWSUser(User):
             "🤖 Generate CloudTrail log given AWS Caller Identity:\n%s",
             json.dumps(aws_caller_identity, indent=2)
         )
-        cloudtrail_log = await async_openai_call(
+        output = await async_openai_call(
             cloudtrail_prompt,
             system_context=system_context,
             response_format="json_object",
         )
-        self.logger.info("✅ Generated CloudTrail log:\n%s", json.dumps(cloudtrail_log, indent=2))
+        self.logger.info("✅ Generated CloudTrail records:\n%s", json.dumps(output, indent=2))
         
         # Write log to ndjson
         TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.touch()
-        record = orjson.dumps(cloudtrail_log)
-        with TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.open("ab") as f:
-            f.write(record + b"\n")
+
+        # We only want individual records
+        if isinstance(output, dict):
+            if "Records" in output.keys():
+                records = output["Records"]
+            else:
+                records = [output]
+
+        for record in records:
+            with TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.open("ab") as f:
+                f.write(orjson.dumps(record) + b"\n")

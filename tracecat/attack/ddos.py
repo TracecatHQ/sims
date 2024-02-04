@@ -92,9 +92,13 @@ def _run_stratus_cmd(
 ):
     aws_default_region = aws_default_region or os.environ["AWS_DEFAULT_REGION"]
     volume_path = f"{STRATUS__HOME_DIR}:/root/.stratus-red-team"
+    # NOTE: Stratus run
+    # Use non-root user
     parent_cmd = [
         "docker",
         "run",
+        "--user",
+        f"{str(os.getuid())}:{str(os.getgid())}"
         "-v",
         volume_path,
         "-e",
@@ -115,7 +119,6 @@ def _run_stratus_cmd(
         cmd = parent_cmd + ["ghcr.io/datadog/stratus-red-team", *cmds]
     process = subprocess.run(
         cmd,
-        env={"UID": str(os.getuid()), "GID": str(os.getgid())},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True  # Ensure the output is returned as a string
