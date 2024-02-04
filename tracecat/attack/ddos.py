@@ -14,6 +14,7 @@ import random
 import secrets
 import shutil
 import subprocess
+import string
 
 from tracecat.ingestion.aws_cloudtrail import (
     AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
@@ -195,13 +196,14 @@ def upload_lab_logs():
 
     # Create S3 Key
     now = datetime.utcnow()
-    date_text = now.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+    date_text = now.strftime("%Y/%m/%d")
     ts = (now - timedelta(minutes=now.minute % 5)).replace(second=0, microsecond=0)
     ts_text = ts.strftime("%Y%m%dT%H%M%Z")
     prefix = "tracecat"
-    uuid = prefix + secrets.token_urlsafe(16 - len(prefix))
-    file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid}.json.gz"
-    key = f"{bucket_name}/AWSLogs{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
+    alphabet = string.ascii_letters + string.digits
+    uuid = prefix + "".join(secrets.choice(alphabet) for _ in range(16 - len(prefix)))
+    file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid.upper()}.json.gz"
+    key = f"AWSLogs/{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
 
     # Load ndjson file into list of dict
     njson_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
@@ -213,7 +215,7 @@ def upload_lab_logs():
 
     gzipped_records = io.BytesIO()
     with gzip.GzipFile(fileobj=gzipped_records, mode="w") as gz_file:
-        gz_file.write(orjson.dumps(records).encode("utf-8"))
+        gz_file.write(orjson.dumps(records))
     gzipped_records.seek(0)
 
     # Upload gzipped json
