@@ -154,26 +154,22 @@ def detonate_stratus(technique_id: str):
 
 async def simulate_stratus(
     technique_id: str,
-    n_users: int,
     delay: int,
     max_tasks: int,
     max_actions: int
 ):
-    users = [
-        NoisyStratusUser(
-            name="redpanda",
-            technique_id=technique_id,
-            max_tasks=max_tasks,
-            max_actions=max_actions
-        )
-        for _ in range(n_users)
-    ]
+    user = NoisyStratusUser(
+        name="redpanda",
+        technique_id=technique_id,
+        max_tasks=max_tasks,
+        max_actions=max_actions
+    )
     denotator = DelayedDetonator(
         delay=delay,
         detonate=detonate_stratus,
         technique_id=technique_id
     )
-    tasks = [*users, denotator]
+    tasks = [user, denotator]
     await asyncio.gather(*[task.run() for task in tasks])
 
 
@@ -196,7 +192,6 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
 
 async def ddos(
     n_attacks: int = 10,
-    n_users: int = 3,
     timeout: int | None = None,
     delay: int | None = None,
     max_tasks: int | None = None,
@@ -220,7 +215,6 @@ async def ddos(
             await asyncio.wait_for(
                 simulate_stratus(
                     technique_id=technique_id,
-                    n_users=n_users,
                     delay=delay,
                     max_tasks=max_tasks,
                     max_actions=max_actions,
