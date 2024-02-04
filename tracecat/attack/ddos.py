@@ -115,6 +115,7 @@ def _run_stratus_cmd(
         cmd = parent_cmd + ["ghcr.io/datadog/stratus-red-team", *cmds]
     process = subprocess.run(
         cmd,
+        env={"UID": str(os.getuid()), "GID": str(os.getgid())},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True  # Ensure the output is returned as a string
