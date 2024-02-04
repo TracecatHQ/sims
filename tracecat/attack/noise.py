@@ -3,10 +3,10 @@ import textwrap
 import subprocess
 from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import openai_call, async_openai_call
-from tracecat.agents import Objective, model_as_text, AWSAPICallAction, Task, AWSAssumeRoleUser
+from tracecat.agents import Objective, model_as_text, AWSAPICallAction, Task, AWSUser
 
 
-class NoisyStratusUser(AWSAssumeRoleUser):
+class NoisyStratusUser(AWSUser):
     """The expert false positives generator."""
 
     def __init__(

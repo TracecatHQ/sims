@@ -54,4 +54,9 @@ def assume_aws_role(
         RoleSessionName=aws_role_session_name
     )
     session_token = assumed_role_object["Credentials"]["SessionToken"]
-    return session_token
+    return {
+        "aws_account_id": aws_account_id,
+        "aws_access_key_id": aws_access_key_id,
+        "aws_secret_access_key": aws_secret_access_key,
+        "aws_session_token": session_token
+    }

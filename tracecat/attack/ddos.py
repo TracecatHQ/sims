@@ -146,7 +146,7 @@ def detonate_stratus(technique_id: str):
 
     # Assume role and get session token
     ts = datetime.now().strftime("%Y%m%d%H%M%S")
-    session_token = assume_aws_role(
+    session_creds = assume_aws_role(
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         aws_role_name="tracecat-lab-admin-role",
@@ -158,7 +158,7 @@ def detonate_stratus(technique_id: str):
         cmds=["warmup", technique_id],
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
-        aws_session_token=session_token
+        aws_session_token=session_creds["aws_session_token"]
     )
 
 

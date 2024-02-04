@@ -306,14 +306,19 @@ class AWSAPIServiceMethod(BaseModel):
 
 class AWSUser(User):
 
-    def get_boto3_client(self, service: str):
+    def get_aws_credentials(self):
         creds = load_lab_credentials(is_compromised=False)
-        client = boto3.client(
-            service,
-            aws_access_key_id=creds[self.name]["aws_access_key_id"],
-            aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
+        aws_access_key_id = creds[self.name]["aws_access_key_id"]
+        aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
+        # Assume role and get session token
+        ts = datetime.now().strftime("%Y%m%d%H%M%S")
+        session_creds = assume_aws_role(
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_role_name="tracecat-lab-admin-role",
+            aws_role_session_name=f"tracecat-lab-normal-{ts}",
         )
-        return client
+        return session_creds
 
     async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3):
         """Make AWS API call."""
@@ -342,6 +347,11 @@ class AWSUser(User):
         user_agent = aws_action["user_agent"]
         terraform_state = self.terraform_state
 
+        # Get AWS user credentials
+        session_creds = self.get_aws_credentials()
+        aws_account_id = session_creds.get("aws_account_id")
+        aws_access_key_id = session_creds.get("aws_access_key_id")
+
         # Generate CloudTrail log
         ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
         cloudtrail_docs = load_aws_cloudtrail_docs()
@@ -354,6 +364,8 @@ class AWSUser(User):
             ```
             Action: {action.name}
             Objective: {action.description}
+            AWS Account ID: {aws_account_id}
+            AWS Access Key ID: {aws_access_key_id}
             AWS Service: {aws_service}
             AWS Method: {aws_method}
             User Agent: {user_agent}
@@ -381,29 +393,6 @@ class AWSUser(User):
             response_format="json_object",
         )
         self.logger.info("🤖 Generated CloudTrail log:\n%s", json.dumps(cloudtrail_log, indent=2))
-
-
-class AWSAssumeRoleUser(AWSUser):
-
-    def get_boto3_client(self, service: str):
-        creds = load_lab_credentials(is_compromised=False)
-        aws_access_key_id = creds[self.name]["aws_access_key_id"]
-        aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
-        # Assume role and get session token
-        ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        session_token = assume_aws_role(
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
-            aws_role_name="tracecat-lab-admin-role",
-            aws_role_session_name=f"tracecat-lab-normal-{ts}",
-        )
-        client = boto3.client(
-            service,
-            aws_access_key_id=creds[self.name]["aws_access_key_id"],
-            aws_secret_access_key=creds[self.name]["aws_secret_access_key"],
-            aws_session_token=session_token
-        )
-        return client
 
 
 class NormalAWSUser(AWSUser):
