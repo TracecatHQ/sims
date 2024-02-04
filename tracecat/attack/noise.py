@@ -55,6 +55,7 @@ class NoisyStratusUser(AWSUser):
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="text",
+            model="gpt-3.5-turbo-1106"
         )
         return result
 
@@ -76,7 +77,7 @@ class NoisyStratusUser(AWSUser):
 
             You must select one AWS API call explicitly mentioned in the "Background".
 
-            Please describe an Objective with its constituent Tasks and Actions according to the following pydantic schema:
+            Please describe one Objective with its constituent Tasks and Actions according to the following pydantic schema:
             ```
             {model_as_text(Objective)}
 
@@ -91,17 +92,23 @@ class NoisyStratusUser(AWSUser):
             Please be realistic and detailed when describing the objective and tasks.
             """
         )
-        # self.logger.info(f"### Get objective prompt\n\n{prom`pt}")
-        result = await async_openai_call(
+
+        objective = await async_openai_call(
             prompt,
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="json_object",
+            model="gpt-3.5-turbo-1106"
         )
-        self.logger.info(f"New objective:\n```\n{json.dumps(result, indent=2)}\n```")
+        if "Objective" in objective.keys():
+            objective = objective["Objective"]
+        elif "objective" in objective.keys():
+            objective = objective["objective"]
+
+        self.logger.info("🚀 New objective:\n```\n%s```", json.dumps(objective, indent=2))
         obj = Objective(
-            name=result["name"],
-            description=result["description"],
-            tasks=result["tasks"]
+            name=objective["name"],
+            description=objective["description"],
+            tasks=objective["tasks"]
         )
         return obj

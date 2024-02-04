@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import os
 from pathlib import Path
 from abc import abstractmethod, ABC
 from datetime import datetime
@@ -230,13 +231,11 @@ class User(ABC):
 
         offset = int(0.3 * action.duration)
         action.duration += random.randint(-offset, offset)
-        self.logger.info(f"Begin action: {action}...")
         duration = action.duration
         start_delay = random.random() * duration
         await asyncio.sleep(start_delay)
 
         # Do action AKA API call
-        self.logger.info(f"Making API call: {action.name}...")
         if action.name is None:
             title = "No API call made"
             action_name = "None"
@@ -256,8 +255,6 @@ class User(ABC):
 
         # End delay
         await asyncio.sleep(duration - start_delay)
-        self.logger.info(f"End action: {action.name}")
-
 
     async def run(self):
         """Run the user's script on the event loop."""
@@ -332,6 +329,7 @@ class AWSUser(User):
             api_call_prompt,
             system_context=system_context,
             response_format="json_object",
+            model="gpt-3.5-turbo-1106"
         )
         aws_service = aws_action["aws_service"]
         aws_method = aws_action["aws_method"]
@@ -340,6 +338,7 @@ class AWSUser(User):
 
         # Get AWS user credentials
         creds = self.get_aws_credentials()
+        aws_account_id = os.environ["AWS_ACCOUNT_ID"]
         aws_access_key_id = creds.get("aws_access_key_id")
 
         # Generate CloudTrail log
@@ -354,6 +353,7 @@ class AWSUser(User):
             ```
             Action: {action.name}
             Objective: {action.description}
+            AWS Account ID: {aws_account_id}
             AWS Access Key ID: {aws_access_key_id}
             AWS Service: {aws_service}
             AWS Method: {aws_method}

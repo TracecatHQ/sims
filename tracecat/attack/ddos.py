@@ -41,7 +41,7 @@ AWS_ATTACK_TECHNIQUES = [
     "aws.exfiltration.ec2-security-group-open-port-22-ingress",
     "aws.exfiltration.ec2-share-ami",
     "aws.exfiltration.ec2-share-ebs-snapshot",
-    "aws.exfiltration.rds-share-snapshot",
+    # "aws.exfiltration.rds-share-snapshot",  # Too slow
     "aws.exfiltration.s3-backdoor-bucket-policy",
     "aws.impact.s3-ransomware-batch-deletion",
     "aws.impact.s3-ransomware-client-side-encryption",
@@ -159,7 +159,7 @@ async def simulate_stratus(
     max_tasks: int,
     max_actions: int
 ):
-    normal_users = [
+    users = [
         NoisyStratusUser(
             name="redpanda",
             technique_id=technique_id,
@@ -173,10 +173,7 @@ async def simulate_stratus(
         detonate=detonate_stratus,
         technique_id=technique_id
     )
-    tasks = [
-        *normal_users,
-        denotator
-    ]
+    tasks = [*users, denotator]
     await asyncio.gather(*[task.run() for task in tasks])
 
 
@@ -206,8 +203,8 @@ async def ddos(
     max_actions: int | None = None,
 ):
 
-    timeout = timeout or 300
-    delay = delay or 15
+    timeout = timeout or 120
+    delay = delay or 3
 
     # Create lab admin credentials
     initialize_stratus_lab()
