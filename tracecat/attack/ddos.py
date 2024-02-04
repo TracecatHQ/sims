@@ -16,6 +16,7 @@ from tracecat.config import TRACECAT__LAB_DIR, STRATUS__HOME_DIR, path_to_pkg
 from tracecat.credentials import assume_aws_role, load_lab_credentials
 from tracecat.logger import standard_logger
 from tracecat.lab import _deploy_lab
+from tracecat.infrastructure import TerraformRunError
 
 
 logger = standard_logger(__name__, level="INFO")
@@ -114,7 +115,16 @@ def _run_stratus_cmd(
         ]
     else:
         cmd = parent_cmd + ["ghcr.io/datadog/stratus-red-team", *cmds]
-    subprocess.run(cmd)
+    process = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True  # Ensure the output is returned as a string
+    )
+    print(process.stdout)
+    print(process.stderr)
+    if "Error" in process.stdout or "Error" in process.stderr:
+        raise TerraformRunError(process.stdout)
 
 
 def warm_up_stratus(technique_id: str):
@@ -154,25 +164,28 @@ def detonate_stratus(technique_id: str):
 
 async def simulate_stratus(
     technique_id: str,
+    n_users: int,
     delay: int,
     max_tasks: int,
     max_actions: int
 ):
-    normal_user = NoisyStratusUser(
-        name="redpanda",
-        technique_id=technique_id,
-        max_tasks=max_tasks,
-        max_actions=max_actions
-    )
-    normal_user.set_background()
+    normal_users = [
+        NoisyStratusUser(
+            name="redpanda",
+            technique_id=technique_id,
+            max_tasks=max_tasks,
+            max_actions=max_actions
+        )
+        for _ in range(n_users)
+    ]
     denotator = DelayedDetonator(
         delay=delay,
         detonate=detonate_stratus,
         technique_id=technique_id
     )
     tasks = [
-        normal_user,
-        # denotator
+        *normal_users,
+        denotator
     ]
     await asyncio.gather(*[task.run() for task in tasks])
 
@@ -196,6 +209,7 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
 
 async def ddos(
     n_attacks: int = 10,
+    n_users: int = 3,
     timeout: int | None = None,
     delay: int | None = None,
     max_tasks: int | None = None,
@@ -214,10 +228,12 @@ async def ddos(
 
         logger.info("🎲 Run simulation %r", technique_id)
         warm_up_stratus(technique_id=technique_id)
+        
         try:
             await asyncio.wait_for(
                 simulate_stratus(
                     technique_id=technique_id,
+                    n_users=n_users,
                     delay=delay,
                     max_tasks=max_tasks,
                     max_actions=max_actions,

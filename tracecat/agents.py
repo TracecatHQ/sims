@@ -39,6 +39,7 @@ import json
 from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, TypeVar
+from typing import Literal
 
 import boto3
 from pydantic import BaseModel
@@ -50,6 +51,7 @@ from tracecat.logger import ActionLog, composite_logger, file_logger
 from tracecat.credentials import load_lab_credentials
 from tracecat.llm import async_openai_call
 from tracecat.infrastructure import show_terraform_state
+from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
 
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
@@ -267,7 +269,23 @@ class User(ABC):
             self.objectives.append(f"{objective.name}: {objective.description}")
 
 
-class Boto3APIServiceMethod(BaseModel):
+def load_aws_cloudtrail_samples() -> list[dict]:
+    dir_path = path_to_pkg() / "tracecat/log_samples/aws_cloudtrail"
+    json_paths = dir_path.glob("*.json")
+    log_samples = []
+    for path in json_paths:
+        with open(path, "r", encoding="utf-8") as f:
+            log_samples.append(json.load(f))
+    return log_samples
+
+
+def load_aws_cloudtrail_docs() -> list[dict]:
+    path = path_to_pkg() / "tracecat/log_references/aws_cloudtrail.html"
+    with open(path, "r") as f:
+        return f.read()
+
+
+class AWSAPIServiceMethod(BaseModel):
     """Python Boto3 Service and Method
 
     Params
@@ -276,14 +294,14 @@ class Boto3APIServiceMethod(BaseModel):
         The AWS service to call. For s3:ListBuckets, this would be "s3".
     aws_method: str
         The AWS service method name. For s3:ListBuckets, this would be "ListBuckets".
-    boto3_method: str
-        The service method to call in Boto3. For s3:ListBuckets, this would be "list_buckets".
-        I should be able to use `getattr(boto3.client(service), method)` to get the method.
+    user_agent: str
+        The user agent used to call the AWS API.
+        Can choose from `Boto3`, `aws-cli`, or a browser.
     """
 
     aws_service: str
     aws_method: str
-    boto3_method: str  # Lower snake case AWS client methods
+    user_agent: Literal["Boto3", "aws-cli", "Mozilla", "Chrome", "Safari"]
 
 
 class AWSUser(User):
@@ -298,189 +316,71 @@ class AWSUser(User):
         return client
 
     async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3):
-        """Make AWS Boto3 API call."""
-        error = None
-        error_prompt = None
-        for _ in range(max_retries):
-            system_context = "You are an expert at performing AWS API calls."
-            if error is not None:
-                error_prompt = (
-                    f"\bThere was an error in the previous API call:"
-                    f"\n```\n{error}\n```"
-                    f"\nPlease amend your API call and try again.\n"
-                )
-            api_call_prompt = textwrap.dedent(
-                f"""
-                Your objective is to perform the following AWS API call using the python3 boto3 client with the objective:
-                Action: {action.name}
-                Objective: {action.description}
-                {error_prompt or ""}
-                Please describe a Boto3APIServiceMethod according to the following pydantic model.
-                ```
-                {model_as_text(Boto3APIServiceMethod)}
-                ```
-                """
-            )
-            try:
-                # Get AWS service and method
-                service_method = await async_openai_call(
-                    api_call_prompt,
-                    system_context=system_context,
-                    response_format="json_object"
-                )
-                aws_service = service_method["aws_service"]
-                aws_method = service_method["aws_method"]
-                boto3_method = service_method["boto3_method"]
+        """Make AWS API call."""
 
-                # Get client and state
-                client = self.get_boto3_client(aws_service)  # LLM breakpoint
-                aws_method_call = getattr(client, boto3_method)  # LLM breakpoint
-                terraform_state = self.terraform_state
+        # Define Action
+        system_context = "You are an expert at performing AWS API calls."
+        api_call_prompt = textwrap.dedent(
+            f"""
+            Your objective is to perform the following AWS API call with the objective:
+            Action: {action.name}
+            Objective: {action.description}
 
-                # Get schema of AWS method via botocore input_shapes
-                input_shape = client.meta.service_model.operation_model(aws_method).input_shape.members
-                request_params_prompt = textwrap.dedent(
-                    f"""
-                    Your objective is to perform the following AWS API call using the python3 boto3 client with the objective:
-                    Action: {action.name}
-                    Objective: {action.description}
-                    AWS Service: {aws_service}
-                    AWS Method: {aws_method}
-                    Boto3 Method: {boto3_method}
+            Please describe a AWSAPIServiceMethod according to the following pydantic model.
+            ```
+            {model_as_text(AWSAPIServiceMethod)}
+            ```
+            """
+        )
+        aws_action = await async_openai_call(
+            api_call_prompt,
+            system_context=system_context,
+            response_format="json_object",
+        )
+        aws_service = aws_action["aws_service"]
+        aws_method = aws_action["aws_method"]
+        user_agent = aws_action["user_agent"]
+        terraform_state = self.terraform_state
 
-                    Please generate a structured JSON response of request parameters given the fields:
-                    {list(input_shape.keys())}
+        # Generate CloudTrail log
+        ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+        cloudtrail_docs = load_aws_cloudtrail_docs()
+        sample_logs = "\n".join(json.dumps(d) for d in load_aws_cloudtrail_samples())
+        cloudtrail_prompt = textwrap.dedent(
+            f"""
+            You objective is to create a realistic AWS CloudTrail log JSON with `eventTime` set to {ts}.
 
-                    You are only allowed to interact with resources specified in the Terraform JSON state:
-                    ```
-                    {terraform_state}
-                    ```
-                    """
-                )
-                request_parameters = await async_openai_call(
-                    request_params_prompt,
-                    system_context=system_context,
-                    response_format="json_object"
-                )
-                # Keep trying to make request parameters compliant with Terraform state.
-                for _ in range(max_retries):
-                    response_elements = None
-                    response_elements_prompt = None
-                    is_boto3_compliant = await async_openai_call(
-                        (
-                            f"Is {request_parameters} request parameters compliant with {aws_service} Boto3 method `{boto3_method}`?"
-                            "\nIf yes: reply with a single string 'true' with no explanation."
-                            "\nIf no: reply with message 'Not compliant', explain why, tell me how to fix."
-                        ),
-                        system_context="You are a helpful Boto3 expert.",
-                        model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
-                        response_format="text"
-                    )
-                    is_tf_compliant = await async_openai_call(
-                        (
-                            f"Will {aws_service} Boto3 method `{boto3_method}` with request parameters {request_parameters} successfully run given Terraform state:"
-                            f"\n{terraform_state}"
-                            "\nIf yes: reply with a single string 'true' with no explanation."
-                            "\nIf no: reply with message 'Not compliant', explain why, tell me how to fix."
-                        ),
-                        system_context="You are a helpful AWS, Boto3, and Terraform expert.",
-                        model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
-                        response_format="text"
-                    )
-                    is_compliant = (
-                        "true" == is_boto3_compliant.lower().strip() and
-                        "true" == is_tf_compliant.lower().strip()
-                    )
-                    if is_compliant:
-                        # NOTE: Make call anyway
-                        # This represents junior developer making mistakes
-                        # which is (probably) the cause of most false positives
-                        self.logger.info(
-                            "🤖 Make Boto3 API call: (%r, %r)",
-                            "\nRequest parameters:\n%s"
-                            "\nGot response:\n%s",
-                            aws_service, aws_method, json.dumps(request_parameters, indent=2)
-                        )
-                        response_elements = aws_method_call(**request_parameters)  # LLM breakpoint
-                        self.logger.info(
-                            "✅ Successfully ran Boto3 API call: (%r, %r"
-                            "\nRequest parameters:\n%s"
-                            "\nGot response:\n%s",
-                            aws_service,
-                            boto3_method,
-                            json.dumps(request_parameters, indent=2),
-                            json.dumps(response_elements, indent=2)
-                        )
-                        break
-                    else:
-                        # NOTE: Make call anyway
-                        # This represents junior developer making mistakes
-                        # which is (probably) the cause of most false positives
-                        self.logger.warning(
-                            "⚠️ Force non-compliant Boto3 API call: (%r, %r)",
-                            aws_service, aws_method, json.dumps(request_parameters, indent=2)
-                        )
-                        try:
-                            response_elements = aws_method_call(**request_parameters)  # LLM breakpoint
-                            response_elements_prompt = f"\nGot response:\n```{json.dumps(response_elements, indent=2)}```"
-                        except Exception as e:
-                            if not "true" in is_boto3_compliant.lower():
-                                self.logger.warning(
-                                    "🧯 Boto3 API call is not compliant."
-                                    "\nTried to make Boto3 API call: (%r, %r)"
-                                    "\nRequest parameters:\n%s"
-                                    "\nSuggested fix:\n%s",
-                                    aws_service, aws_method, json.dumps(request_parameters, indent=2), is_boto3_compliant
-                                )
-                                request_parameters = await async_openai_call(
-                                    (
-                                        f"{request_parameters} request parameters is NOT compliant with {aws_service} Boto3 method `{boto3_method}`."
-                                        f"\nExplanation:```{is_boto3_compliant}```"
-                                        f"{response_elements_prompt if response_elements is not None else ''}"
-                                        "\nGenerate a new structured JSON response of request parameters that is compliant."
-                                    ),
-                                    system_context=(
-                                        "You are a helpful Boto3 expert."
-                                        "\nYou are an experienced staff software engineer"
-                                        "\nYou are helping a junior dev solve the following task:"
-                                        f"\n```{request_params_prompt}```"
-                                    ),
-                                    # model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
-                                    response_format="json_object"
-                                )
-                            if not "true" in is_tf_compliant:
-                                self.logger.warning(
-                                    "🧯 Boto3 API call is not compliant with Terraform state."
-                                    "\nTried to make Boto3 API call: (%r, %r)"
-                                    "\nRequest parameters:\n%s"
-                                    "\nTerraform state:\n```%r```"
-                                    "\nSuggested fix:\n%s",
-                                    aws_service, aws_method, json.dumps(request_parameters, indent=2), json.dumps(terraform_state, indent=2), is_tf_compliant
-                                )
-                                request_parameters = await async_openai_call(
-                                    (
-                                        f"{aws_service} Boto3 method `{boto3_method}` with request parameters {request_parameters} does not run against Terraform state: {terraform_state}."
-                                        f"\nExplanation:```{is_tf_compliant}```"
-                                        f"{response_elements_prompt if response_elements is not None else ''}"
-                                        "\nGenerate a new structured JSON response of request parameters that is compliant."
-                                    ),
-                                    system_context=(
-                                        "You are a helpful AWS, Boto3, and Terraform expert."
-                                        "\nYou are an experienced staff software engineer"
-                                        "\nYou are helping a junior dev solve the following task:"
-                                        f"\n```{request_params_prompt}```"
-                                    ),
-                                    # model="gpt-3.5-turbo-1106",  # Use a faster model for fix suggestions
-                                    response_format="json_object"
-                                )
+            The JSON log must conform with the following metadata:
+            ```
+            Action: {action.name}
+            Objective: {action.description}
+            AWS Service: {aws_service}
+            AWS Method: {aws_method}
+            User Agent: {user_agent}
+            Terraform state:\n{terraform_state}
+            ```
 
-            except KeyError as e:
-                self.logger.warning(f"🧯 Boto3 API does not recognise suggested service {aws_service} or method {boto3_method}")
-                error = e
+            The JSON log must conform with the AWS CloudTrail JSON schema.
+            Please predict a realistic `userAgent` in the JSON log.
+            If applicable, please include realistic `requestParameters` and `responseElements` in the JSON log.
 
-            except Exception as e:
-                self.logger.warning("🧯 Error in Boto3 API call", exc_info=e)
-                error = e
+            You must use the following AWS CloudTrail documentation in HTML as a guide:
+            ```html
+            {cloudtrail_docs}
+            ```
+
+            You can use the following eexample AWS CloudTrail JSON logs as a guide:
+            ```ndjson
+            {sample_logs}
+            ```
+            """
+        )
+        cloudtrail_log = await async_openai_call(
+            cloudtrail_prompt,
+            system_context=system_context,
+            response_format="json_object",
+        )
+        self.logger.info("🤖 Generated CloudTrail log:\n%s", json.dumps(cloudtrail_log, indent=2))
 
 
 class AWSAssumeRoleUser(AWSUser):

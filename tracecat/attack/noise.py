@@ -1,7 +1,6 @@
 import json
 import textwrap
 import subprocess
-from pathlib import Path
 from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import openai_call, async_openai_call
 from tracecat.agents import Objective, model_as_text, AWSAPICallAction, Task, AWSAssumeRoleUser
@@ -23,19 +22,21 @@ class NoisyStratusUser(AWSAssumeRoleUser):
         super().__init__(
             name=name,
             terraform_path=terraform_path,
+            background=self.get_background(technique_id=technique_id),
             max_tasks=max_tasks,
             max_actions=max_actions,
             mock_actions=mock_actions
         )
 
-    def set_background(self) -> str:
+    @staticmethod
+    def get_background(technique_id: str) -> str:
         stratus_show_output = subprocess.run([
             "docker",
             "run",
             "--rm",
             "ghcr.io/datadog/stratus-red-team",
             "show",
-            self.technique_id
+            technique_id
         ], capture_output=True, text=True)
         attack_description = stratus_show_output.stdout
         system_context = (
@@ -55,8 +56,7 @@ class NoisyStratusUser(AWSAssumeRoleUser):
             system_context=system_context,
             response_format="text",
         )
-        self.logger.info(result)
-        self.background = result
+        return result
 
     async def get_objective(self) -> Objective:
         system_context = (
