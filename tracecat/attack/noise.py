@@ -67,17 +67,7 @@ class NoisyStratusUser(AWSUser):
         )
         prompt = textwrap.dedent(
             f"""
-            Your task is to predict what a user with the following background might realistically do:
-
-            Background:
-            {self.background}
-
-            The user has completed the following objectives:
-            {self.objectives!s}
-
-            You must select one AWS API call explicitly mentioned in the "Background".
-
-            Please describe one Objective with its constituent Tasks and Actions according to the following pydantic schema:
+            Please describe one `Objective` with its constituent `Tasks` and `Actions` according to the following pydantic schema:
             ```
             {model_as_text(Objective)}
 
@@ -85,11 +75,21 @@ class NoisyStratusUser(AWSUser):
 
             {model_as_text(AWSAPICallAction)}
             ```
+            You are to generate a single structured JSON response.
+    
+            Your goal in describing the `Objective` is to predict what a user with the following background might realistically do:
+            ```
+            Background:
+            {self.background}
 
-            You are to generate a structured JSON response.
+            The user has completed the following objectives:
+            {self.objectives!s}
+            ```
+
+            You must select one AWS API call explicitly mentioned in the "Background".
             Each objective should have no more than {self.max_tasks} tasks.
             Each task should have no more than {self.max_actions} actions.
-            Please be realistic and detailed when describing the objective and tasks.
+            Please be realistic and detailed.
             """
         )
 
@@ -98,10 +98,17 @@ class NoisyStratusUser(AWSUser):
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="json_object",
-            model="gpt-3.5-turbo-1106"
         )
+
+        if "Objectives" in objective.keys():
+            objective = objective["Objectives"]
+
+        elif "objectives" in objective.keys():
+            objective = objective["objectives"]
+
         if "Objective" in objective.keys():
             objective = objective["Objective"]
+
         elif "objective" in objective.keys():
             objective = objective["objective"]
 

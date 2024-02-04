@@ -29,7 +29,7 @@ AWS_CLOUDTRAIL__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
-SELECTED_FIELDS = [
+AWS_CLOUDTRAIL__SELECTED_FIELDS = [
     # Normalized fields
     pl.col("userIdentity").str.json_path_match("$.arn").alias("arn"),
     pl.col("userIdentity").str.json_path_match("$.accessKeyId").alias("accessKeyId"),
@@ -44,7 +44,7 @@ SELECTED_FIELDS = [
     "requestParameters",
     "responseElements",
 ]
-NESTED_FIELDS = [
+AWS_CLOUDTRAIL__NESTED_FIELDS = [
     "userIdentity",
     "requestParameters",
     "responseElements",
@@ -131,7 +131,7 @@ def _load_cloudtrail_gzip(object_name: str, bucket_name: str) -> Path:
     with open(ndjson_file_path, "w") as f:
         # Stream each record into an ndjson file
         for record in records:
-            log_bytes = _record_to_json(record=record, json_fields=NESTED_FIELDS)
+            log_bytes = _record_to_json(record=record, json_fields=AWS_CLOUDTRAIL__NESTED_FIELDS)
             f.write(log_bytes.decode("utf-8") + "\n")
     return ndjson_file_path
 
@@ -153,7 +153,7 @@ def _load_cloudtrail_ndjson(
     logger.info("🗂️ Filter for normal IDs: %s", normal_ids)
     logs = (
         # NOTE: This might cause memory to blow up
-        raw_logs.select(SELECTED_FIELDS)
+        raw_logs.select(AWS_CLOUDTRAIL__SELECTED_FIELDS)
         .filter(pl.col("eventTime").str.strptime(
             format=AWS_CLOUDTRAIL__EVENT_TIME_FORMAT,
             dtype=pl.Datetime

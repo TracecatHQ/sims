@@ -29,34 +29,35 @@ from __future__ import annotations
 
 import asyncio
 import random
-import os
 from pathlib import Path
 from abc import abstractmethod, ABC
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import textwrap
 import json
+import orjson
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Any, TypeVar
-from typing import Literal
+from typing import Any, TypeVar, Literal
 
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.llm import async_openai_call
 from tracecat.logger import ActionLog, composite_logger, file_logger
-from tracecat.credentials import load_lab_credentials
+from tracecat.credentials import load_lab_credentials, get_caller_identity
 from tracecat.llm import async_openai_call
 from tracecat.infrastructure import show_terraform_state
 from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
 
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
-TRACECAT__LAB_DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
-TRACECAT__LAB_ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
-TRACECAT__LAB_DEBUG_LOGS_PATH.touch()
-TRACECAT__LAB_ACTIONS_LOGS_PATH.touch()
+TRACECAT__LAB__DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
+TRACECAT__LAB__ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
+TRACECAT__LAB__AWS_CLOUDTRAIL_PATH = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
+
+TRACECAT__LAB__DEBUG_LOGS_PATH.touch()
+TRACECAT__LAB__ACTIONS_LOGS_PATH.touch()
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -110,13 +111,13 @@ class AWSAPICallAction(BaseModel):
         This must be explicitly mentioned in the "Background" or "Objectives".
     description: str
         The intent of the action. Please be detailed and verbose when describing the intent.
-    duration: float
-        Time in seconds between 5-15 seconds to complete this action.
+    duration: int
+        Time in seconds to complete this action.
     """
 
     name: __REPLACE_WITH_ACTIONS_LIST__
     description: str
-    duration: float
+    duration: int
 
 
 def dynamic_action_factory(actions: list[str]) -> str:
@@ -191,13 +192,13 @@ class User(ABC):
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
-            file_path=TRACECAT__LAB_DEBUG_LOGS_PATH,
+            file_path=TRACECAT__LAB__DEBUG_LOGS_PATH,
             log_format="log",
         )
         # For actions
         self.action_logger = file_logger(
             f"actions__{self.name}",
-            file_path=TRACECAT__LAB_ACTIONS_LOGS_PATH,
+            file_path=TRACECAT__LAB__ACTIONS_LOGS_PATH,
             log_format="json"
         )
 
@@ -214,7 +215,7 @@ class User(ABC):
             await self.perform_action(action)
 
     def _perform_action(self, action: AWSAPICallAction):
-        return (self._mock_action if self.mock_actions else self._make_api_call)(action)
+        return (self._mock_action if self.mock_actions else self._make_api_call)(action=action)
 
     async def _mock_action(self, action: AWSAPICallAction):
         """Mock an action by logging it to a file."""
@@ -222,7 +223,7 @@ class User(ABC):
         await asyncio.sleep(1)
 
     @abstractmethod
-    async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3) -> Objective:
+    async def _make_api_call(self, action: AWSAPICallAction) -> Objective:
         pass
 
     async def perform_action(self, action: AWSAPICallAction):
@@ -308,7 +309,7 @@ class AWSUser(User):
         aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
         return {"aws_access_key_id": aws_access_key_id, "aws_secret_access_key": aws_secret_access_key}
 
-    async def _make_api_call(self, action: AWSAPICallAction, max_retries: int = 3):
+    async def _make_api_call(self, action: AWSAPICallAction):
         """Make AWS API call."""
 
         # Define Action
@@ -338,23 +339,28 @@ class AWSUser(User):
 
         # Get AWS user credentials
         creds = self.get_aws_credentials()
-        aws_account_id = os.environ["AWS_ACCOUNT_ID"]
-        aws_access_key_id = creds.get("aws_access_key_id")
+        aws_caller_identity = get_caller_identity(
+            aws_access_key_id=creds["aws_access_key_id"],
+            aws_secret_access_key=creds["aws_secret_access_key"] 
+        )
 
         # Generate CloudTrail log
-        ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+        start_ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+        end_ts = start_ts + timedelta(seconds=action.duration)
         cloudtrail_docs = load_aws_cloudtrail_docs()
-        sample_logs = "\n".join(json.dumps(d) for d in load_aws_cloudtrail_samples())
         cloudtrail_prompt = textwrap.dedent(
             f"""
-            You objective is to create a realistic AWS CloudTrail log JSON with `eventTime` set to {ts}.
+            You objective is to create realistic AWS CloudTrail JSON log records with `eventTime` set between {start_ts} and {end_ts}.
+            Use this format:
+            ```json
+            {{"Records": list of dictionaries}}
+            ```
 
-            The JSON log must conform with the following metadata:
+            Each record must conform with the following metadata:
             ```
             Action: {action.name}
             Objective: {action.description}
-            AWS Account ID: {aws_account_id}
-            AWS Access Key ID: {aws_access_key_id}
+            AWS Caller Identity: {aws_caller_identity}
             AWS Service: {aws_service}
             AWS Method: {aws_method}
             User Agent: {user_agent}
@@ -369,19 +375,24 @@ class AWSUser(User):
             ```html
             {cloudtrail_docs}
             ```
-
-            You can use the following eexample AWS CloudTrail JSON logs as a guide:
-            ```ndjson
-            {sample_logs}
-            ```
             """
+        )
+        self.logger.info(
+            "🤖 Generate CloudTrail log given AWS Caller Identity:\n%s",
+            json.dumps(aws_caller_identity, indent=2)
         )
         cloudtrail_log = await async_openai_call(
             cloudtrail_prompt,
             system_context=system_context,
             response_format="json_object",
         )
-        self.logger.info("🤖 Generated CloudTrail log:\n%s", json.dumps(cloudtrail_log, indent=2))
+        self.logger.info("✅ Generated CloudTrail log:\n%s", json.dumps(cloudtrail_log, indent=2))
+        
+        # Write log to ndjson
+        TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.touch()
+        record = orjson.dumps(cloudtrail_log)
+        with TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.open("ab") as f:
+            f.write(record + b"\n")
 
 
 class NormalAWSUser(AWSUser):

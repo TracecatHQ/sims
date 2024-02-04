@@ -96,7 +96,6 @@ def _run_stratus_cmd(
     parent_cmd = [
         "docker",
         "run",
-        "--rm",
         "-v",
         volume_path,
         "-e",
@@ -156,7 +155,8 @@ async def simulate_stratus(
     technique_id: str,
     delay: int,
     max_tasks: int,
-    max_actions: int
+    max_actions: int,
+    timeout: int
 ):
     user = NoisyStratusUser(
         name="redpanda",
@@ -170,7 +170,10 @@ async def simulate_stratus(
         technique_id=technique_id
     )
     tasks = [user, denotator]
-    await asyncio.gather(*[task.run() for task in tasks])
+    await asyncio.wait_for(
+        asyncio.gather(*[task.run() for task in tasks]),
+        timeout=timeout,
+    )
 
 
 def clean_up_stratus(technique_id: str | None = None, include_all: bool = False):
@@ -198,8 +201,8 @@ async def ddos(
     max_actions: int | None = None,
 ):
 
-    timeout = timeout or 120
-    delay = delay or 3
+    timeout = timeout or 300
+    delay = delay or 30
 
     # Create lab admin credentials
     initialize_stratus_lab()
@@ -212,14 +215,12 @@ async def ddos(
         warm_up_stratus(technique_id=technique_id)
         
         try:
-            await asyncio.wait_for(
-                simulate_stratus(
-                    technique_id=technique_id,
-                    delay=delay,
-                    max_tasks=max_tasks,
-                    max_actions=max_actions,
-                ),
-                timeout=timeout,
+            await simulate_stratus(
+                technique_id=technique_id,
+                delay=delay,
+                max_tasks=max_tasks,
+                max_actions=max_actions,
+                timeout=timeout
             )
         except asyncio.TimeoutError:
             logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)

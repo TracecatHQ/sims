@@ -34,6 +34,18 @@ def get_malicious_ids() -> list[str]:
     return malicious_ids
 
 
+def get_caller_identity(
+    aws_access_key_id: str,
+    aws_secret_access_key: str,
+) -> dict:
+    sts_client = boto3.client(
+        "sts",
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
+    return sts_client.get_caller_identity()
+
+
 def assume_aws_role(
     aws_access_key_id: str,
     aws_secret_access_key: str,

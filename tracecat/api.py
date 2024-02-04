@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from tracecat.attack.ddos import ddos, clean_up_stratus
-from tracecat.agents import TRACECAT__LAB_ACTIONS_LOGS_PATH
+from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
 from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
     LabResults,
@@ -52,7 +52,7 @@ for q in ["statistics", "activity"]:
 
 
 async def tail_file_handler():
-    async for line in tail_file(TRACECAT__LAB_ACTIONS_LOGS_PATH):
+    async for line in tail_file(TRACECAT__LAB__ACTIONS_LOGS_PATH):
         line = line.strip()
         for _, q in TRACECAT__LOG_QUEUES.items():
             await q.put(line)
