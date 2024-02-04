@@ -11,7 +11,7 @@ import shutil
 
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
-from tracecat.config import TRACECAT__LAB_DIR, STRATUS__HOME_DIR, path_to_pkg
+from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.credentials import load_lab_credentials
 from tracecat.logger import standard_logger
 from tracecat.lab import deploy_lab
@@ -87,34 +87,17 @@ def _run_stratus_cmd(
     cmds: list[str],
     aws_access_key_id: str,
     aws_secret_access_key: str,
-    aws_session_token: str | None = None,
-    aws_default_region: str | None = None
 ):
-    aws_default_region = aws_default_region or os.environ["AWS_DEFAULT_REGION"]
-    volume_path = f"{STRATUS__HOME_DIR}:/root/.stratus-red-team"
-    parent_cmd = [
-        "docker",
-        "run",
-        "-v",
-        volume_path,
-        "-e",
-        f"AWS_ACCESS_KEY_ID={aws_access_key_id}",
-        "-e",
-        f"AWS_SECRET_ACCESS_KEY={aws_secret_access_key}",
-        "-e",
-        f"AWS_DEFAULT_REGION={aws_default_region}"
-    ]
-    if aws_session_token:
-        cmd = parent_cmd + [
-            "-e",
-            f"AWS_SESSION_TOKEN={aws_session_token}",
-            "ghcr.io/datadog/stratus-red-team",
-            *cmds
-        ]
-    else:
-        cmd = parent_cmd + ["ghcr.io/datadog/stratus-red-team", *cmds]
+    aws_default_region = os.environ["AWS_DEFAULT_REGION"]
+    cmd = ["stratus", *cmds]
     process = subprocess.run(
         cmd,
+        env={
+            **os.environ.copy(),
+            "AWS_ACCESS_KEY_ID": aws_access_key_id,
+            "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
+            "AWS_DEFAULT_REGION": aws_default_region
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True  # Ensure the output is returned as a string

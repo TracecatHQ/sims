@@ -32,10 +32,7 @@ class NoisyStratusUser(AWSUser):
     def get_background(technique_id: str) -> str:
         stratus_show_output = subprocess.run(
             [
-                "docker",
-                "run",
-                "--rm",
-                "ghcr.io/datadog/stratus-red-team",
+                "stratus",
                 "show",
                 technique_id
             ],
