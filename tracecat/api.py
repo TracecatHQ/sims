@@ -24,7 +24,6 @@ from tracecat.lab import (
     LabResults,
     evaluate_lab,
     clean_up_lab,
-    run_lab,
 )
 from tracecat.logger import standard_logger, tail_file
 
@@ -135,7 +134,6 @@ def root():
 
 @app.get("/lab", response_model=LabResults)
 def get_lab(
-    scenario_id: str,
     bucket_name: str | None = None,
     regions: list[str] | None = None,
     account_id: str = None,
@@ -158,7 +156,6 @@ def get_lab(
     buffer_delta = timedelta(seconds=buffer_time)
     now = datetime.now().replace(second=0, microsecond=0)
     results = evaluate_lab(
-        scenario_id=scenario_id,
         start=now - buffer_delta,
         end=now + buffer_delta,
         account_id=account_id,
@@ -187,31 +184,6 @@ async def create_ddos_lab(
         delay=delay,
         max_tasks=max_tasks,
         max_actions=max_actions
-    )
-    return {"message": "Lab created"}
-
-
-@app.post("/lab")
-async def create_lab(
-    scenario_id: str,
-    background_tasks: BackgroundTasks,
-    skip_simulation: bool = False,
-    timeout: int | None = None,
-    delay: int | None = None,
-    max_tasks: int | None = None,
-    max_actions: int | None = None,
-    task_retries: int | None = None,
-):
-    """Run detections lab."""
-    background_tasks.add_task(
-        run_lab,
-        scenario_id=scenario_id,
-        skip_simulation=skip_simulation,
-        timeout=timeout,
-        delay=delay,
-        max_tasks=max_tasks,
-        max_actions=max_actions,
-        task_retries=task_retries,
     )
     return {"message": "Lab created"}
 

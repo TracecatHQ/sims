@@ -1,16 +1,13 @@
-import asyncio
 import boto3
 import os
 import shutil
 import polars as pl
 import subprocess
-from tenacity import retry, stop_after_attempt
 from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
 
-from tracecat.agents import load_all_policies, load_all_personas
 from tracecat.credentials import load_lab_credentials
 from tracecat.config import TRACECAT__LAB_DIR, TRACECAT__TRIAGE_DIR, path_to_pkg
 from tracecat.defense.siem_alerts import get_datadog_alerts
@@ -24,30 +21,14 @@ from tracecat.ingestion.aws_cloudtrail import (
     load_triaged_cloudtrail_logs,
 )
 from tracecat.logger import standard_logger
-from tracecat.infrastructure import scenario_to_infra_path, run_terraform
-from tracecat.scenarios import SCENARIO_ID_TO_SIMULATION
-from tracecat.setup import create_compromised_ssh_keys, create_ip_whitelist
+from tracecat.infrastructure import run_terraform
 from tracecat.credentials import get_normal_ids, get_malicious_ids
 
 
 logger = standard_logger(__name__, level="INFO")
 
 
-
-def check_lab():
-    # Cold: Missing or empty directory
-    # Warm:
-    # 1. Non-empty directory
-    # 2. `terraform plan` no changes
-    # 3. But no Action logs
-    # Running:
-    # Warm 1 + 2 and Action logs, but no timeout
-    # Completed: TimeoutError
-    # Failed: Any other exception
-    pass
-
-
-def _deploy_lab() -> Path:
+def deploy_lab() -> Path:
     """Deploy lab infrastructure ready for attacks.
 
     Assumes lab project files already configured and Terraform in Docker is available.
@@ -69,83 +50,12 @@ def _deploy_lab() -> Path:
     run_terraform(["apply", "-auto-approve", "plan.tfplan"], chdir=chdir)
 
 
-def initialize_lab(scenario_id: str):
-    """Create lab directory and spin-up Terraform in Docker.
-
-    Parameters
-    ----------
-    scenario_id : str
-    """
-    logger.info("🐱 Create new lab directory")
-    TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Shared configs
-    create_ip_whitelist()
-    create_compromised_ssh_keys()
-
-    # Create Terraform on Docker
-    # TODO: Capture stdout and deal with errors
-    logger.info("🚧 Create Terraform in Docker container")
-    subprocess.run(
-        ["docker", "compose", "-f", path_to_pkg() / "docker-compose.yaml", "up", "-d"],
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
-    )
-
-    # Copy Terraform project into labs
-    logger.info("🚧 Copy Terraform project into lab")
-    project_path = scenario_to_infra_path(scenario_id=scenario_id)
-    shutil.copytree(project_path, TRACECAT__LAB_DIR, dirs_exist_ok=True)
-
-    # Deploy laab
-    _deploy_lab()
-
-
-async def simulate_lab(
-    scenario_id: str,
-    timeout: int | None = None,
-    delay: int | None = None,
-    max_tasks: int | None = None,
-    max_actions: int | None = None,
-):
-    """Asynchronously run organization to simuluate normal behavior and detonate attack."""
-    timeout = timeout or 300
-    delay = delay or 60
-
-    try:
-        simulate = SCENARIO_ID_TO_SIMULATION[scenario_id]
-    except KeyError as err:
-        raise KeyError("Scenario ID not found: %s", scenario_id) from err
-
-    try:
-        await asyncio.wait_for(
-            simulate(
-                delay=delay,
-                max_tasks=max_tasks,
-                max_actions=max_actions,
-            ),
-            timeout=timeout,
-        )
-    except asyncio.TimeoutError:
-        logger.info("✅ Simulation timed out successfully after %s seconds", timeout)
-
-
-def get_lab_users(scenario_id: str) -> pl.DataFrame:
+def get_lab_users() -> pl.DataFrame:
     creds = load_lab_credentials(load_all=True)
     compromised_users = creds["compromised"].keys()
-    policies = {
-        # NOTE: Coerce values in policies to strings
-        # Otherwise polars replace will ignore keys in nested dict
-        k: str(v) for k, v in
-        load_all_policies(scenario_id=scenario_id).items()
-    }
-    personas = load_all_personas(scenario_id=scenario_id)
     lab_users = (
         pl.DataFrame({"name": creds["normal"].keys()})
-        .with_columns(
-            is_compromised=pl.col("name").is_in(compromised_users),
-            policy=pl.col("name").replace(policies),
-            persona=pl.col("name").replace(personas)
-        )
+        .with_columns(is_compromised=pl.col("name").is_in(compromised_users))
     )
     return lab_users
 
@@ -162,7 +72,6 @@ class LabResults(BaseModel):
 
 
 def evaluate_lab(
-    scenario_id: str,
     start: datetime,
     end: datetime,
     account_id: str = None,
@@ -215,7 +124,7 @@ def evaluate_lab(
     logger.info("🔢 Final event counts: %s", confusion_matrix)
 
     logger.info("🧬 Gather lab users info")
-    users = get_lab_users(scenario_id=scenario_id)
+    users = get_lab_users()
     logger.info("🧬 All lab users info: %s", users)
 
     results = LabResults(
@@ -229,44 +138,6 @@ def evaluate_lab(
         users=users.to_dicts(),
     )
     return results
-
-
-async def run_lab(
-    scenario_id: str,
-    skip_simulation: bool = False,
-    timeout: int | None = None,
-    delay: int | None = None,
-    max_tasks: int | None = None,
-    max_actions: int | None = None,
-    task_retries: int | None = None,
-) -> Path:
-    """Run lab and return path to lab results.
-
-    Parameters
-    ----------
-    skip_simulation : bool
-        Defaults to False. If True, assumes simulation is complete
-        and skips straight to evaluation.
-    """
-    if not skip_simulation:
-        logger.info("🎲 Run lab simulation")
-        task_retries = task_retries or 2
-        _retry = retry(stop=stop_after_attempt(task_retries))
-        task_queue = [
-            (initialize_lab, {"scenario_id": scenario_id}),
-            (simulate_lab, {
-                "scenario_id": scenario_id,
-                "timeout": timeout,
-                "delay": delay,
-                "max_tasks": max_tasks,
-                "max_actions": max_actions}
-            ),
-        ]
-        for task, params in task_queue:
-            if asyncio.iscoroutinefunction(task):
-                await _retry(task)(**params)
-            else:
-                _retry(task)(**params)
 
 
 class FailedTerraformDestroy(Exception):

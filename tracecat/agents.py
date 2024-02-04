@@ -70,37 +70,6 @@ def model_as_text(model: type[T]) -> str:
 __REPLACE_WITH_ACTIONS_LIST__ = str
 
 
-def load_all_policies(scenario_id: str):
-    """Returns mapping of every user policy in a scenario."""
-    dir_path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "policies"
-    policies = {}
-    for file_path in dir_path.glob("*.json"):
-        if file_path.is_file():
-            user_name = file_path.stem
-            with file_path.open() as f:
-                policies[user_name] = json.load(f)
-
-    if not len(policies) > 0:
-        raise FileNotFoundError(f"No policies found in {dir_path}")
-
-    return policies
-
-
-def load_all_personas(scenario_id: str):
-    """Returns mapping of every user persona in a scenario."""
-    dir_path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "personas"
-    personas = {}
-    for file_path in dir_path.glob("*.txt"):
-        if file_path.is_file():
-            user_name = file_path.stem
-            with file_path.open() as f:
-                personas[user_name] = f.read()
-
-    if not len(personas) > 0:
-        raise FileNotFoundError(f"No personas found in {dir_path}")
-
-    return personas
-
 class AWSAPICallAction(BaseModel):
     """An action that a user can perform.
 
@@ -332,6 +301,7 @@ class AWSUser(User):
             response_format="json_object",
             model="gpt-3.5-turbo-1106"
         )
+        self.logger("🎲 Selected action:\n%s", json.dumps(aws_action, indent=2))
         aws_service = aws_action["aws_service"]
         aws_method = aws_action["aws_method"]
         user_agent = aws_action["user_agent"]
@@ -393,54 +363,3 @@ class AWSUser(User):
         record = orjson.dumps(cloudtrail_log)
         with TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.open("ab") as f:
             f.write(record + b"\n")
-
-
-class NormalAWSUser(AWSUser):
-
-    async def get_objective(self) -> Objective:
-        """Get an objective, dictated by the background/persona of the user."""
-        system_context = (
-            "You are an expert in predicting what users in an organization might do."
-            "You are also an expert at breaking down objectives into smaller tasks."
-            "You are creative and like to think outside the box."
-        )
-        prompt = textwrap.dedent(
-            f"""
-            Your task is to predict what a user with the following background might realistically do:
-
-            Background:
-            {self.background}
-
-            The user has completed the following objectives:
-            {self.objectives!s}
-
-            You must select from a list of actions that the user can perform, given their IAM policy:
-            ```
-            {json.dumps(self.policy, indent=2)}
-            ```
-
-            Please describe an Objective with its constituent Tasks and Actions according to the following pydantic schema:
-            ```
-            {model_as_text(Objective)}
-
-            {model_as_text(Task)}
-
-            {dynamic_action_factory(self.policy["Statement"][0]["Action"])}
-            ```
-
-            You are to generate a structured JSON response.
-            Each objective should have no more than {self.max_tasks} tasks.
-            Each task should have no more than {self.max_actions} actions.
-            Please be realistic and detailed when describing the objective and tasks.
-            """
-        )
-        # self.logger.info(f"### Get objective prompt\n\n{prom`pt}")
-        result = await async_openai_call(
-            prompt,
-            temperature=1,  # High temperature for creativity and variation
-            system_context=system_context,
-            response_format="json_object",
-        )
-        self.logger.info(f"New objective:\n```\n{json.dumps(result, indent=2)}\n```")
-        obj = Objective(**result)
-        return obj

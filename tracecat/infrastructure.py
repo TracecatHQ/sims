@@ -12,11 +12,6 @@ class TerraformRunError(Exception):
     pass
 
 
-def scenario_to_infra_path(scenario_id: str) -> Path:
-    path = path_to_pkg() / "tracecat/scenarios" / scenario_id / "infra"
-    return path
-
-
 def run_terraform(cmds: list[str], chdir: str | None = None):
     base_cmds = ["docker", "compose", "run", "--rm", "terraform"]
     if chdir:

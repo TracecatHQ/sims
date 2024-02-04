@@ -8,14 +8,13 @@ import os
 import random
 import subprocess
 import shutil
-from datetime import datetime
 
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
 from tracecat.config import TRACECAT__LAB_DIR, STRATUS__HOME_DIR, path_to_pkg
-from tracecat.credentials import assume_aws_role, load_lab_credentials
+from tracecat.credentials import load_lab_credentials
 from tracecat.logger import standard_logger
-from tracecat.lab import _deploy_lab
+from tracecat.lab import deploy_lab
 from tracecat.infrastructure import TerraformRunError
 
 
@@ -81,7 +80,7 @@ def initialize_stratus_lab():
     shutil.copy(script_src, script_dst)
 
     # Create Terraform infra
-    _deploy_lab()
+    deploy_lab()
 
 
 def _run_stratus_cmd(
