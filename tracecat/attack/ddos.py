@@ -198,7 +198,7 @@ def upload_lab_logs():
     now = datetime.utcnow()
     date_text = now.strftime("%Y/%m/%d")
     ts = (now - timedelta(minutes=now.minute % 5)).replace(second=0, microsecond=0)
-    ts_text = ts.strftime("%Y%m%dT%H%M%Z")
+    ts_text = ts.strftime("%Y%m%dT%H%MZ")
     prefix = "tracecat"
     alphabet = string.ascii_letters + string.digits
     uuid = prefix + "".join(secrets.choice(alphabet) for _ in range(16 - len(prefix)))
