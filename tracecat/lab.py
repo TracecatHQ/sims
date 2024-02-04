@@ -1,13 +1,9 @@
 import boto3
 import os
-import orjson
-import io
-import gzip
 import shutil
 import polars as pl
-import secrets
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -21,7 +17,6 @@ from tracecat.evaluation import (
     compute_event_percentage_counts
 )
 from tracecat.ingestion.aws_cloudtrail import (
-    AWS_CLOUDTRAIL__EVENT_TIME_FORMAT,
     load_cloudtrail_logs,
     load_triaged_cloudtrail_logs,
 )
@@ -53,42 +48,6 @@ def deploy_lab() -> Path:
     # TODO: Capture stdout and deal with errors
     logger.info("🚧 Run Terraform apply")
     run_terraform(["apply", "-auto-approve", "plan.tfplan"], chdir=chdir)
-
-
-def upload_lab_logs():
-    """Upload generated fake lab logs into S3 bucket for AWS CloudTrail.
-    """
-    
-    # Get S3 location
-    aws_account_id = os.environ["AWS_ACCOUNT_ID"]
-    aws_default_region = os.environ["AWS_DEFAULT_REGION"]
-    bucket_name = os.environ["AWS_CLOUDTRAIL__BUCKET_NAME"]
-
-    # Create S3 Key
-    now = datetime.utcnow()
-    date_text = now.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
-    ts = now - timedelta(minutes=now.minute % 5).replace(seconds=0, microseconds=0)
-    ts_text = ts.strftime("%Y%m%dT%H%M%Z")
-    uuid = secrets.token_urlsafe(16)
-    file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid}.json.gz"
-    key = f"{bucket_name}/AWSLogs{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
-
-    # Load ndjson file into list of dict
-    njson_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
-    records = []
-    with open(njson_logs_path, "r") as f:
-        for line in f:
-            # Parse the JSON line and append the resulting dictionary to the list
-            records.append(orjson.loads(line))
-
-    gzipped_records = io.BytesIO()
-    with gzip.GzipFile(fileobj=gzipped_records, mode="w") as gz_file:
-        gz_file.write(orjson.dumps(records).encode("utf-8"))
-    gzipped_records.seek(0)
-
-    # Upload gzipped json
-    s3_client = boto3.client("s3")
-    s3_client.put_object(Body=gzipped_records, Bucket=bucket_name, Key=key, ContentEncoding="gzip", ContentType="application/json")
 
 
 def get_lab_users() -> pl.DataFrame:

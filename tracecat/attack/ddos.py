@@ -3,12 +3,21 @@
 This is a pentesting tool that assumes full visibility into your AWS inventory.
 """
 
+from datetime import datetime, timedelta
 import asyncio
+import boto3
+import gzip
+import io
+import orjson
 import os
 import random
-import subprocess
+import secrets
 import shutil
+import subprocess
 
+from tracecat.ingestion.aws_cloudtrail import (
+    AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
+)
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
@@ -175,6 +184,42 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
         )
 
 
+def upload_lab_logs():
+    """Upload generated fake lab logs into S3 bucket for AWS CloudTrail.
+    """
+    
+    # Get S3 location
+    aws_account_id = os.environ["AWS_ACCOUNT_ID"]
+    aws_default_region = os.environ["AWS_DEFAULT_REGION"]
+    bucket_name = os.environ["AWS_CLOUDTRAIL__BUCKET_NAME"]
+
+    # Create S3 Key
+    now = datetime.utcnow()
+    date_text = now.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+    ts = now - timedelta(minutes=now.minute % 5).replace(seconds=0, microseconds=0)
+    ts_text = ts.strftime("%Y%m%dT%H%M%Z")
+    uuid = secrets.token_urlsafe(16)
+    file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid}.json.gz"
+    key = f"{bucket_name}/AWSLogs{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
+
+    # Load ndjson file into list of dict
+    njson_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
+    records = []
+    with open(njson_logs_path, "r") as f:
+        for line in f:
+            # Parse the JSON line and append the resulting dictionary to the list
+            records.append(orjson.loads(line))
+
+    gzipped_records = io.BytesIO()
+    with gzip.GzipFile(fileobj=gzipped_records, mode="w") as gz_file:
+        gz_file.write(orjson.dumps(records).encode("utf-8"))
+    gzipped_records.seek(0)
+
+    # Upload gzipped json
+    s3_client = boto3.client("s3")
+    s3_client.put_object(Body=gzipped_records, Bucket=bucket_name, Key=key, ContentEncoding="gzip", ContentType="application/json")
+
+
 async def ddos(
     n_attacks: int = 10,
     timeout: int | None = None,
@@ -204,6 +249,7 @@ async def ddos(
                 max_actions=max_actions,
                 timeout=timeout
             )
+            upload_lab_logs()
         except asyncio.TimeoutError:
             logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
 

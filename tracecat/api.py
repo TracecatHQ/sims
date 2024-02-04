@@ -24,7 +24,6 @@ from tracecat.lab import (
     LabResults,
     evaluate_lab,
     clean_up_lab,
-    upload_lab_logs
 )
 from tracecat.logger import standard_logger, tail_file
 
@@ -167,11 +166,6 @@ def get_lab(
         triage=triage
     )
     return results
-
-
-@app.post("/artifacts")
-async def upload_lab_artifacts():
-    upload_lab_logs()
 
 
 @app.post("/ddos")
