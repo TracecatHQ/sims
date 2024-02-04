@@ -181,7 +181,10 @@ class User(ABC):
 
     async def perform_task(self, task: Task):
         for action in task.actions:
-            await self.perform_action(action)
+            try:
+                await self.perform_action(action)
+            except Exception as e:
+                self.logger.warning("⚠️ Error performing action: %s. Skipping...", action, exc_info=e)
 
     def _perform_action(self, action: AWSAPICallAction):
         return (self._mock_action if self.mock_actions else self._make_api_call)(action=action)
