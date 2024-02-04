@@ -98,7 +98,7 @@ def _run_stratus_cmd(
         "docker",
         "run",
         "--user",
-        f"{str(os.getuid())}:{str(os.getgid())}"
+        f"{str(os.getuid())}:{str(os.getgid())}",
         "-v",
         volume_path,
         "-e",

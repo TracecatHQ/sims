@@ -38,7 +38,7 @@ class NoisyStratusUser(AWSUser):
                 "docker",
                 "run",
                 "--user",
-                f"{str(os.getuid())}:{str(os.getgid())}"
+                f"{str(os.getuid())}:{str(os.getgid())}",
                 "--rm",
                 "ghcr.io/datadog/stratus-red-team",
                 "show",
