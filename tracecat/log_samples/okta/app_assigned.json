@@ -1,0 +1,34 @@
+{
+    "uuid": "b2a109f8-765e-d4c3-b2a1-09f8765ed4c3",
+    "published": "2024-01-22T17:00:00.000Z",
+    "eventType": "app.user.assignment",
+    "version": "1.0",
+    "severity": "INFO",
+    "displayMessage": "Application assigned to user",
+    "actor": {
+      "id": "00uadmin12345",
+      "type": "Admin",
+      "alternateId": "admin@example.com",
+      "displayName": "Admin User"
+    },
+    "target": [
+      {
+        "id": "app12345xyz",
+        "type": "App",
+        "displayName": "Salesforce"
+      },
+      {
+        "id": "00u12345abcde",
+        "type": "User",
+        "displayName": "John Doe"
+      }
+    ],
+    "client": {
+      "ipAddress": "192.0.2.4",
+      "userAgent": {
+        "rawUserAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36",
+        "os": "Windows 10",
+        "browser": "Chrome"
+      }
+    }
+  }

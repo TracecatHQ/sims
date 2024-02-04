@@ -1,0 +1,26 @@
+{
+  "uuid": "09f8765e-d4c3-b2a1-09f8-765ed4c3b2a1",
+  "published": "2024-01-22T19:30:00.000Z",
+  "eventType": "user.account.lock",
+  "version": "1.0",
+  "severity": "ERROR",
+  "displayMessage": "User account locked",
+  "actor": {
+    "id": "00u54321edcba",
+    "type": "User",
+    "alternateId": "user2@example.com",
+    "displayName": "Jane Smith"
+  },
+  "outcome": {
+    "result": "LOCKOUT",
+    "reason": "Multiple failed login attempts"
+  },
+  "client": {
+    "ipAddress": "198.51.100.5",
+    "userAgent": {
+      "rawUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.193 Safari/537.36",
+      "os": "Mac OS X",
+      "browser": "Chrome"
+    }
+  }
+}

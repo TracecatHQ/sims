@@ -1,0 +1,26 @@
+{
+    "uuid": "d4c3b2a1-09f8-765e-d4c3-b2a109f8765e",
+    "published": "2024-01-22T15:45:00.000Z",
+    "eventType": "user.session.start",
+    "version": "1.0",
+    "severity": "WARN",
+    "displayMessage": "Failed login attempt",
+    "actor": {
+      "id": "00u54321edcba",
+      "type": "User",
+      "alternateId": "user2@example.com",
+      "displayName": "Jane Smith"
+    },
+    "outcome": {
+      "result": "FAILURE",
+      "reason": "Invalid credentials"
+    },
+    "client": {
+      "ipAddress": "203.0.113.3",
+      "userAgent": {
+        "rawUserAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.1 Mobile/15E148 Safari/604.1",
+        "os": "iOS",
+        "browser": "Safari"
+      }
+    }
+  }
