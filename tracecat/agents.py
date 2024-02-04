@@ -315,12 +315,14 @@ class AWSUser(User):
         )
 
         # Generate CloudTrail log
-        start_ts = datetime.now().strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+        start_ts = datetime.now()
         end_ts = start_ts + timedelta(seconds=action.duration)
+        start_ts_text = start_ts.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+        end_ts_text = end_ts.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
         cloudtrail_docs = load_aws_cloudtrail_docs()
         cloudtrail_prompt = textwrap.dedent(
             f"""
-            You objective is to create realistic AWS CloudTrail JSON log records with `eventTime` set between {start_ts} and {end_ts}.
+            You objective is to create realistic AWS CloudTrail JSON log records with `eventTime` set between {start_ts_text} and {end_ts_text}.
             Use this format:
             ```json
             {{"Records": list of dictionaries}}
