@@ -92,13 +92,9 @@ def _run_stratus_cmd(
 ):
     aws_default_region = aws_default_region or os.environ["AWS_DEFAULT_REGION"]
     volume_path = f"{STRATUS__HOME_DIR}:/root/.stratus-red-team"
-    # NOTE: Stratus run
-    # Use non-root user
     parent_cmd = [
         "docker",
         "run",
-        "--user",
-        f"{str(os.getuid())}:{str(os.getgid())}",
         "-v",
         volume_path,
         "-e",

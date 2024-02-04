@@ -36,7 +36,6 @@ def show_terraform_state(path: str):
     cmds = ["terraform", "show"]
     process = subprocess.run(
         cmds,
-        env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
         cwd=path,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

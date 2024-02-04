@@ -1,5 +1,4 @@
 import json
-import os
 import textwrap
 import subprocess
 from tracecat.config import STRATUS__HOME_DIR
@@ -31,14 +30,10 @@ class NoisyStratusUser(AWSUser):
 
     @staticmethod
     def get_background(technique_id: str) -> str:
-        # NOTE: Stratus run
-        # Use non-root user
         stratus_show_output = subprocess.run(
             [
                 "docker",
                 "run",
-                "--user",
-                f"{str(os.getuid())}:{str(os.getgid())}",
                 "--rm",
                 "ghcr.io/datadog/stratus-red-team",
                 "show",
