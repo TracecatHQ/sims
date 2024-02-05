@@ -20,6 +20,9 @@ TRACECAT__THREAT_INTEL_DIR = TRACECAT__HOME_DIR / "threat_intel"
 TRACECAT__TRIAGE_DIR = TRACECAT__HOME_DIR / "triage"
 TRACECAT__LOGS_DIR = TRACECAT__HOME_DIR / "logs"  # Nice clean normalized logs
 TRACECAT__AUTOTUNER_DIR = TRACECAT__HOME_DIR / "autotuner"
+TRACECAT__CSPM_DIR = TRACECAT__HOME_DIR / "cspm"
+TRACECAT__DOCKER_COMPOSE_NAME = "tracecat-lab"
+TRACECAT__DOCKER_WORKDIR = "/home/terraform/lab"
 
 TRACECAT__VECTORDB_DIR.mkdir(parents=True, exist_ok=True)
 TRACECAT__TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
