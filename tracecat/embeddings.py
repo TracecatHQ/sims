@@ -5,6 +5,8 @@ import openai
 import polars as pl
 from openai.types import Embedding
 
+OPENAI_EMBEDDING_SIZE = 1536
+
 client = openai.OpenAI()
 async_client = openai.AsyncOpenAI()
 
