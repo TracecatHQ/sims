@@ -4,6 +4,7 @@ from pathlib import Path
 import lancedb
 import polars as pl
 from lancedb.table import Table
+from pydantic import BaseModel, ConfigDict
 
 from tracecat.config import TRACECAT__CSPM_DIR, TRACECAT__VECTORDB_DIR
 from tracecat.embeddings import embed_batch, with_embeddings
@@ -27,6 +28,11 @@ def _get_latest_report_embs() -> Path:
 
 def _get_lancedb() -> lancedb.db.DBConnection:
     return lancedb.connect(TRACECAT__VECTORDB_DIR)
+
+
+def get_latest_report_df() -> pl.DataFrame:
+    """Return the latest prowler report as a DataFrame."""
+    return pl.read_json(_get_latest_report())
 
 
 def run_prowler():
@@ -79,10 +85,36 @@ def create_lancedb_table_from_embeddings(
     return table
 
 
-def search(query: str, table_name: str | None = None, limit: int = 10) -> pl.DataFrame:
+class SearchResult(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    table_name: str
+    query: str
+    data: pl.DataFrame
+
+
+def search(query: str, table_name: str | None = None, limit: int = 10) -> SearchResult:
     """Search lancedb for a query."""
     tbl = _get_lancedb().open_table(table_name or "cspm_prowler")
     embeddings = embed_batch([query])
     emb = embeddings[0].embedding
     results = tbl.search(emb).metric("cosine").limit(limit).to_polars()
+    return SearchResult(
+        table_name=table_name,
+        query=query,
+        data=results,
+    )
+
+
+def search_many(
+    queries: list[str], table_name: str | None = None, limit: int = 10
+) -> list[SearchResult]:
+    """Search lanccedb over many queries."""
+    tbl = _get_lancedb().open_table(table_name or "cspm_prowler")
+    embeddings = embed_batch(queries)
+    results = []
+    for query, emb in zip(queries, embeddings, strict=True):
+        search_res = tbl.search(emb.embedding).metric("cosine").limit(limit).to_polars()
+        results.append(
+            SearchResult(table_name=table_name, query=query, data=search_res)
+        )
     return results

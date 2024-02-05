@@ -1,14 +1,24 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
 import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Awaitable, Callable, Literal, Self, TypeVar, get_args, get_origin
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Literal,
+    Self,
+    TypeVar,
+    get_args,
+    get_origin,
+)
 from uuid import uuid4
 
 import httpx
-import markdown
 import orjson
 import polars as pl
 from pydantic import BaseModel, Field, field_serializer
@@ -16,6 +26,8 @@ from pydantic import BaseModel, Field, field_serializer
 from tracecat.agents import model_as_text
 from tracecat.autotuner.types import RuleType
 from tracecat.config import TRACECAT__AUTOTUNER_DIR, path_to_pkg
+from tracecat.cspm import search_many
+from tracecat.cspm.prowler import get_latest_report_df
 from tracecat.llm import async_openai_call
 from tracecat.logger import standard_logger
 from tracecat.schemas.datadog import RuleUpdateRequest
@@ -63,6 +75,163 @@ def _get_model_dependencies_string(model: type[BaseModel]) -> str:
 
 
 #####################
+## STEP 0: Augment ##
+#####################
+__PLACEHOLDER_TABLES__ = str
+
+
+class InvestigationQuery(BaseModel):
+    """A list of queries that will help determine whether the alert is a true or false positive.
+
+    Parameters
+    ----------
+    table_name: str
+        The table in the vector database to be serached.
+
+    query: str
+        The natural language query to be run against the vector database table.
+    """
+
+    table_name: __PLACEHOLDER_TABLES__
+    query: str
+
+
+async def get_retrieval_queries(
+    rule_id: str, rule: Rule, sources: list[str]
+) -> list[InvestigationQuery]:
+    logger.info(f"Generating retrieval queries for rule {rule_id}...")
+    system_context = (
+        "You are an expert security content educator."
+        " You are an expert at writing queries for information retrieval in a security context."
+        " You always break down security content into concise questions that will guide an investigation."
+    )
+
+    prompt = textwrap.dedent(
+        f"""
+        You have been given an alert with the following description:
+        ```
+        {rule.message}
+        ```
+        Your task is to generate a list of 5-8 queries that will help determine whether the alert is a true or false positive.
+
+        Construct your query under the assumption that it will be used to retrieve information about a rule, through a vector database.
+        The available tables in the vector database are: {sources!r}.
+
+        Please return describe a `InvestigationQueries` according to the following pydantic model.
+        ```
+        InvestigationQueries = list[InvestigationQuery]
+
+        {model_as_text(InvestigationQuery).replace("__PLACEHOLDER_TABLES__", "Literal" + repr(sources))}
+        ```
+        """
+    )
+
+    response = await async_openai_call(
+        prompt,
+        system_context=system_context,
+        response_format="json_object",
+        temperature=0.5,
+    )
+    if isinstance(response, dict) and "InvestigationQueries" in response:
+        response = response["InvestigationQueries"]
+    queries = [InvestigationQuery.model_validate(r) for r in response]
+    return queries
+
+
+async def get_relevant_vdb_documents(
+    rule_id: str, rule: Rule, variant: str, table_name: str
+) -> list[tuple[str, str]]:
+    # What is the rule?
+
+    # Why did the LLM make the suggestion?
+
+    # Back this up with facts from dynamic sources
+    # 1. Construct IR queries
+    # 2. Run search for each query
+    queries = await get_retrieval_queries(rule_id, rule, sources=[table_name])
+
+    search_results = search_many([q.query for q in queries], table_name=table_name)
+
+    # Correlate the search results with the report
+    report_lf = get_latest_report_df().lazy()
+    uuid_col = "FindingUniqueId"
+    lfs = []
+    # Construct list of lazyframes
+    for res in search_results:
+        lf = (
+            # Take only top 3
+            res.data.head(3)
+            .select(pl.col.embed_text, uuid_col)
+            .explode(uuid_col)
+            .lazy()
+            .join(report_lf, on=uuid_col, how="left")
+            .select(
+                [
+                    "ResourceArn",
+                    "ServiceName",
+                    "ResourceType",
+                    "CheckTitle",
+                    "Status",
+                    "StatusExtended",
+                    "Severity",
+                    "Description",
+                    "Risk",
+                    pl.col.Remediation.struct.field("Recommendation").struct.field(
+                        "Text"
+                    ),
+                    pl.col.Remediation.struct.field("Recommendation").struct.field(
+                        "Url"
+                    ),
+                ]
+            )
+        )
+        lfs.append(lf)
+
+    dfs = pl.collect_all(lfs)
+    return [
+        (q.query, df.write_csv(include_header=True))
+        for q, df in zip(queries, dfs, strict=True)
+    ]
+
+
+async def get_recommendations(
+    rule_id: str, rule: Rule, variant: str, n_choices: int = 3
+) -> list[RuleUpdateRec]:
+    """Get recommendations for a rule.
+
+    Steps
+    -----
+    Get supporting documents
+    -------------------------
+    - Operate under the assumption that all required data is available and preprocessed.
+    - The objective is to bring together all the data that is relevant to the rule.
+    - Perform a RAG step to consolidate relevant documents from:
+        1. Prowler CSPM
+        2. Attack path
+        3.
+    2. Suggest new rules
+
+    """
+    cspm_prowler_docs = await get_relevant_vdb_documents(
+        rule_id, rule, variant, "cspm_prowler"
+    )
+
+    cspm_prowler_full = "\n".join(
+        f"### {query}\n{result}" for query, result in cspm_prowler_docs
+    )
+    additional_context = {"CSPM Findings": cspm_prowler_full}
+
+    recs = await recommend_new_rule(
+        rule_id,
+        rule,
+        additional_context=additional_context,
+        variant=variant,
+        n_choices=n_choices,
+    )
+    return recs
+
+
+#####################
 ## STEP 1: Suggest ##
 #####################
 
@@ -94,6 +263,7 @@ async def recommend_new_rule(
     rule_id: str,
     rule: Rule,
     *,
+    additional_context: dict[str, Any],
     variant: RuleType,
     n_choices: int = 3,
 ) -> list[RuleUpdateRec]:
@@ -107,12 +277,14 @@ async def recommend_new_rule(
         " You are an expert at writing and amending SIEM detection rules in order to "
         "improve the SIEM's false positive rate."
     )
-    additional_context = "Any additional context goes here."
+    additional_context = "# Additional Context\n" + "\n\n".join(
+        f"## {k}\n{v}" for k, v in additional_context.items()
+    )
     rule_improvement = "lower false positive rate"
     # Read markdown file
     path = path_to_pkg() / "tracecat/schemas/datadog_log_search_syntax.md"
     with path.open("r") as f:
-        rule_syntax = markdown.markdown(f.read())
+        rule_syntax = f.read()
     prompt = textwrap.dedent(
         f"""
         Your objective is to suggest an improved {variant.capitalize()} SIEM rule.
@@ -142,6 +314,10 @@ async def recommend_new_rule(
         ```
         """
     )
+
+    logger.info("################")
+    logger.info(prompt)
+    logger.info("################")
 
     response = await async_openai_call(
         prompt,
@@ -486,8 +662,10 @@ async def user_select_strategy(
 
     filename = f"{variant}__{rule_id}.json"
     recs_path = get_recs_dir() / filename
+
+    # TODO(perf): Improve this caching strategy
     if not recs_path.exists():
-        recs = await recommend_new_rule(rule_id, rule, variant=variant, n_choices=3)
+        recs = await get_recommendations(rule_id, rule, variant=variant, n_choices=3)
         with recs_path.open("w") as f:
             json.dump([r.model_dump() for r in recs], f, indent=4)
     else:
