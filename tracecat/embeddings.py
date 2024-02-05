@@ -32,5 +32,5 @@ def with_embeddings(
 ) -> pl.DataFrame:
     """Return a polars DataFrame with an additional column of OpenAI embeddings."""
     embeddings = embed_batch(df[text_col], model=model)
-    embs_arr = np.array([e.embedding for e in embeddings])
+    embs_arr = np.array([e.embedding for e in embeddings], dtype=np.float32)
     return df.with_columns(vector=embs_arr)
