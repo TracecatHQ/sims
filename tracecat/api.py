@@ -351,6 +351,7 @@ def get_all_rules():
                 "message",
             ]
         )
+        .filter(pl.col.source == "cloudtrail")
         .collect(streaming=True)
     )
     return (
@@ -462,7 +463,6 @@ async def get_optimizer_result_by_index(rule_id: str, index: int):
     path = get_results_dir(rule_id) / "results.json"
     with path.open("r") as f:
         data = json.load(f)
-    print(len(data), data)
     if index >= len(data):
         raise HTTPException(status_code=404, detail="Index not found")
     result = optimizer.OptimizerResult.model_validate(data[index])
