@@ -7,7 +7,6 @@ import asyncio
 import gzip
 import io
 import os
-import random
 import secrets
 import shutil
 import string
@@ -16,6 +15,7 @@ from datetime import datetime, timedelta
 
 import boto3
 import orjson
+from tqdm import tqdm
 
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
@@ -38,12 +38,15 @@ AWS_ATTACK_TECHNIQUES = [
     "aws.defense-evasion.cloudtrail-event-selectors",
     "aws.defense-evasion.cloudtrail-lifecycle-rule",
     "aws.defense-evasion.cloudtrail-stop",
+    "aws.defense-evasion.dns-delete-logs",
     "aws.defense-evasion.organizations-leave",
     "aws.defense-evasion.vpc-remove-flow-logs",
     "aws.discovery.ec2-enumerate-from-instance",
     "aws.discovery.ec2-download-user-data",
     "aws.execution.ec2-launch-unusual-instances",
     "aws.execution.ec2-user-data",
+    "aws.execution.ssm-send-command",
+    "aws.execution.ssm-start-session",
     "aws.exfiltration.ec2-security-group-open-port-22-ingress",
     "aws.exfiltration.ec2-share-ami",
     "aws.exfiltration.ec2-share-ebs-snapshot",
@@ -53,15 +56,30 @@ AWS_ATTACK_TECHNIQUES = [
     "aws.impact.s3-ransomware-client-side-encryption",
     "aws.impact.s3-ransomware-individual-deletion",
     # "aws.initial-access.console-login-without-mfa",  # Creates new user
+    "aws.lateral-movement.ec2-instance-connect",
     "aws.persistence.iam-backdoor-role",
     # "aws.persistence.iam-backdoor-user",  # Creates new user
     "aws.persistence.iam-create-admin-user",
+    "aws.persistence.iam-create-backdoor-role",
     # "aws.persistence.iam-create-user-login-profile",  # Creates new user
     "aws.persistence.lambda-backdoor-function",
     "aws.persistence.lambda-layer-extension",
     "aws.persistence.lambda-overwrite-code",
     "aws.persistence.rolesanywhere-create-trust-anchor",
 ]
+
+# NOTE: We piece together independent attacks in
+# temporal order as a proxy for a multistage attack
+# These attacks don't actually chain together by identities (human and non-human)
+
+AWS_ATTACK_SCENARIOS = {
+    "ec2-brute-force": [
+        "aws.execution.ssm-start-session",  # Execution
+        "aws.credential-access.ec2-get-password-data",  # Credential Access
+        "aws.discovery.ec2-enumerate-from-instance",  # Discovery
+        "aws.exfiltration.ec2-share-ami",  # Exfiltration
+    ]
+}
 
 
 def initialize_stratus_lab():
@@ -222,7 +240,7 @@ def upload_lab_logs():
 
 
 async def ddos(
-    n_attacks: int = 10,
+    scenario_id: str,
     timeout: int | None = None,
     delay: int | None = None,
     max_tasks: int | None = None,
@@ -235,14 +253,23 @@ async def ddos(
     initialize_stratus_lab()
 
     # Run simulation
-    for _ in range(n_attacks):
-        technique_id = random.choice(AWS_ATTACK_TECHNIQUES)
+    try:
+        technique_ids = AWS_ATTACK_SCENARIOS[scenario_id]
+        kill_chain_length = len(technique_ids)
+    except KeyError as err:
+        raise KeyError(f"Scenario {scenario_id!r} not recognized") from err
 
-        logger.info("🚧 Warm up infrastructure %r", technique_id)
+    desc = "⚔️ Execute attack"
+    for i, technique_id in (pbar := enumerate(tqdm(technique_ids, desc=desc))):
+        technique_desc = f"{desc} [{technique_id} | {i} of {kill_chain_length}]"
+
+        # Set up infrastructure
+        logger.info("%s: warm up", technique_desc)
         warm_up_stratus(technique_id=technique_id)
 
+        # Execute attack
         try:
-            logger.info("🎲 Run simulation %r", technique_id)
+            logger.info("%s: simulate", technique_desc)
             await simulate_stratus(
                 technique_id=technique_id,
                 delay=delay,
@@ -251,13 +278,9 @@ async def ddos(
                 timeout=timeout,
             )
         except asyncio.TimeoutError:
-            logger.info(
-                "✅ Simulation %r timed out successfully after %s seconds",
-                technique_id,
-                timeout,
-            )
+            logger.info("%s: ✅ timed out successfully", technique_desc)
         finally:
-            logger.info("🗂️ Upload logs to S3 %r", technique_id)
+            logger.info("%s: 🗂️ Upload logs to S3", technique_desc)
             upload_lab_logs()
 
     # Final clean up

@@ -192,7 +192,8 @@ def get_lab(
 @app.post("/ddos")
 async def create_ddos_lab(
     background_tasks: BackgroundTasks,
-    n_attacks: int = 10,
+    # Temporary default to speedup development
+    scenario_id: str = "ec2-brute-force",
     timeout: int | None = None,
     delay: int | None = None,
     max_tasks: int | None = None,
@@ -200,7 +201,7 @@ async def create_ddos_lab(
 ):
     background_tasks.add_task(
         ddos,
-        n_attacks=n_attacks,
+        scenario_id=scenario_id,
         timeout=timeout,
         delay=delay,
         max_tasks=max_tasks,
