@@ -7,8 +7,8 @@ from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import async_openai_call, openai_call
 
 
-class NoisyStratusUser(AWSUser):
-    """The expert false positives generator."""
+class MaliciousStratusUser(AWSUser):
+    """The hacker."""
 
     def __init__(
         self,
@@ -22,7 +22,7 @@ class NoisyStratusUser(AWSUser):
         super().__init__(
             name=name,
             terraform_path=terraform_path,
-            is_compromised=False,
+            is_compromised=True,
             background=self.get_background(technique_id=technique_id),
             max_tasks=max_tasks,
             max_actions=max_actions,
@@ -35,15 +35,14 @@ class NoisyStratusUser(AWSUser):
         )
         attack_description = stratus_show_output.stdout
         system_context = (
-            "You are an expert in reverse engineering Cloud cyber attacks."
-            "You are an expert in Cloud activities that produce false positives in a SIEM."
-            "You are an expert in spoofing in the Cloud."
+            "You are an expert Cloud cybersecurity professional."
+            "You are an expert red teamer."
             "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = (
-            f"Your task is to rewrite this attack description:\n```{attack_description}```"
-            "\nInto a description of a software engineer or DevOps engineer (pick one)."
-            "\nUse the same tools and techniques as described in the attack but in a non-malicious way."
+            f"Your task is to create an attacker motive that aligns with this attack description:\n```{attack_description}```"
+            "\nThe motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist."
+            "Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description."
         )
         result = openai_call(
             prompt,
@@ -56,7 +55,7 @@ class NoisyStratusUser(AWSUser):
 
     async def get_objective(self) -> Objective:
         system_context = (
-            "You are an expert in predicting what users in an organization might do."
+            "You are an expert in predicting what a motivated cyber threat actor might do."
             "You are also an expert at breaking down objectives into smaller tasks."
             "You are creative and like to think outside the box."
         )
@@ -72,7 +71,7 @@ class NoisyStratusUser(AWSUser):
             ```
             You are to generate a single structured JSON response.
 
-            Your goal in describing the `Objective` is to predict what a user with the following background might realistically do:
+            Your goal in describing the `Objective` is to predict what a malicious user with the following background might realistically do:
             ```
             Background:
             {self.background}

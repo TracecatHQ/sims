@@ -28,33 +28,29 @@ Simpler kflow (less api calls):
 from __future__ import annotations
 
 import asyncio
-import random
-from pathlib import Path
-from abc import abstractmethod, ABC
-from datetime import datetime, timedelta
 import inspect
-import textwrap
 import json
-import orjson
+import random
+import textwrap
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Any, TypeVar, Literal
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Literal, TypeVar
 
+import orjson
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
-from tracecat.llm import async_openai_call
-from tracecat.logger import ActionLog, composite_logger, file_logger
-from tracecat.credentials import load_lab_credentials, get_caller_identity
-from tracecat.llm import async_openai_call
+from tracecat.credentials import get_caller_identity, load_lab_credentials
 from tracecat.infrastructure import show_terraform_state
 from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
-
+from tracecat.llm import async_openai_call
+from tracecat.logger import ActionLog, composite_logger, file_logger
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 TRACECAT__LAB__DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
 TRACECAT__LAB__ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
-TRACECAT__LAB__AWS_CLOUDTRAIL_PATH = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
 
 TRACECAT__LAB__DEBUG_LOGS_PATH.touch()
 TRACECAT__LAB__ACTIONS_LOGS_PATH.touch()
@@ -143,21 +139,25 @@ class User(ABC):
         self,
         name: str,
         terraform_path: Path,
+        is_compromised: bool,
         policy: dict[str, Any] | None = None,
         background: str | None = None,
+        terraform_script_path: Path | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
-        mock_actions: bool = False
     ):
         self.name = name
         self.terraform_path = terraform_path
+        self.terraform_script_path = (
+            terraform_script_path  # Backup in case Terraform state is not available
+        )
+        self.is_compromised = is_compromised
         self.policy = policy
         self.background = background
         self.max_tasks = max_tasks or 10
         self.max_actions = max_actions or 10
         self.tasks = deque()
         self.objectives: list[str] = []
-        self.mock_actions = mock_actions
         # For lab diagnostics
         self.logger = composite_logger(
             f"diagnostics__{self.name}",
@@ -168,12 +168,21 @@ class User(ABC):
         self.action_logger = file_logger(
             f"actions__{self.name}",
             file_path=TRACECAT__LAB__ACTIONS_LOGS_PATH,
-            log_format="json"
+            log_format="json",
         )
 
     @property
-    def terraform_state(self):
-        return show_terraform_state(self.terraform_path)
+    def terraform_state(self) -> str | None:
+        try:
+            state = show_terraform_state(self.terraform_path)
+            if isinstance(state, str) and "no state" in state.lower():
+                raise FileNotFoundError
+        except FileNotFoundError:
+            state = None
+            self.logger.warning("⚠️ Terraform state not found. Ignore state in prompt.")
+        else:
+            self.logger.info("🚧 Got Terraform state:\n%s", state)
+        return state
 
     @abstractmethod
     async def get_objective(self) -> Objective:
@@ -184,19 +193,24 @@ class User(ABC):
             try:
                 await self.perform_action(action)
             except Exception as e:
-                self.logger.warning("⚠️ Error performing action: %s. Skipping...", action, exc_info=e)
-
-    def _perform_action(self, action: AWSAPICallAction):
-        return (self._mock_action if self.mock_actions else self._make_api_call)(action=action)
-
-    async def _mock_action(self, action: AWSAPICallAction):
-        """Mock an action by logging it to a file."""
-        self.logger.info(f"Mocking action: {action.name}...")
-        await asyncio.sleep(1)
+                self.logger.warning(
+                    "⚠️ Error performing action: %s. Skipping...", action, exc_info=e
+                )
 
     @abstractmethod
-    async def _make_api_call(self, action: AWSAPICallAction) -> Objective:
+    async def _make_api_call(self, action: AWSAPICallAction) -> list[dict]:
         pass
+
+    @abstractmethod
+    async def _write_api_logs(self, logs: list[dict]):
+        pass
+
+    async def _perform_action(self, action: AWSAPICallAction) -> list[dict]:
+        """Perform action and return list of API logs."""
+        # Make call
+        logs = await self._make_api_call(action=action)
+        # Write calls
+        await self._write_api_logs(logs)
 
     async def perform_action(self, action: AWSAPICallAction):
         # Add random noise to action.duration
@@ -274,14 +288,30 @@ class AWSAPIServiceMethod(BaseModel):
 
 
 class AWSUser(User):
-
-    def get_aws_credentials(self):
-        creds = load_lab_credentials(is_compromised=False)
+    def _get_aws_credentials(self):
+        creds = load_lab_credentials(is_compromised=self.is_compromised)
         aws_access_key_id = creds[self.name]["aws_access_key_id"]
         aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
-        return {"aws_access_key_id": aws_access_key_id, "aws_secret_access_key": aws_secret_access_key}
+        return {
+            "aws_access_key_id": aws_access_key_id,
+            "aws_secret_access_key": aws_secret_access_key,
+        }
 
-    async def _make_api_call(self, action: AWSAPICallAction):
+    async def _write_api_logs(self, logs: list[dict]):
+        # Write logs to ndjson
+        dir_path = TRACECAT__LAB_DIR / "aws_cloudtrail"
+        dir_path.mkdir(parents=True, exist_ok=True)
+        if self.is_compromised:
+            logs_path = dir_path / "compromised.ndjson"
+        else:
+            logs_path = dir_path / "normal.ndjson"
+        # Write to disk
+        logs_path.touch()
+        for log in logs:
+            with logs_path.open("ab") as f:
+                f.write(orjson.dumps(log) + b"\n")
+
+    async def _make_api_call(self, action: AWSAPICallAction) -> list[dict]:
         """Make AWS API call."""
 
         # Define Action
@@ -302,7 +332,7 @@ class AWSUser(User):
             api_call_prompt,
             system_context=system_context,
             response_format="json_object",
-            model="gpt-3.5-turbo-1106"
+            model="gpt-3.5-turbo-1106",
         )
         self.logger.info("🎲 Selected action:\n%s", json.dumps(aws_action, indent=2))
         if "AWSAPIServiceMethod" in aws_action.keys():
@@ -313,22 +343,42 @@ class AWSUser(User):
             aws_method = aws_action["aws_method"]
             user_agent = aws_action["user_agent"]
         except KeyError as e:
-            raise KeyError(f"Expected {AWSAPIServiceMethod!s}. Got {aws_action}.") from e
-
-        terraform_state = self.terraform_state
+            raise KeyError(
+                f"Expected {AWSAPIServiceMethod!s}. Got {aws_action}."
+            ) from e
 
         # Get AWS user credentials
-        creds = self.get_aws_credentials()
-        aws_caller_identity = get_caller_identity(
-            aws_access_key_id=creds["aws_access_key_id"],
-            aws_secret_access_key=creds["aws_secret_access_key"] 
-        )
+        creds = self._get_aws_credentials()
 
-        # Generate CloudTrail log
+        # Test lab
+        if "EXAMPLE" in creds["aws_access_key_id"]:
+            aws_caller_identity = {
+                "aws_access_key_id": creds["aws_access_key_id"],
+                "aws_secret_access_key": creds["aws_secret_access_key"],
+                "aws_default_region": "us-east-1",
+            }
+        else:
+            # Live lab
+            aws_caller_identity = get_caller_identity(
+                aws_access_key_id=creds["aws_access_key_id"],
+                aws_secret_access_key=creds["aws_secret_access_key"],
+            )
+
+        # Get terraform state
+        terraform_state = self.terraform_state
+        terraform_state_prompt = ""
+        if isinstance(terraform_state, str):
+            terraform_state_prompt = (
+                f"Terraform state:\n```json\n{terraform_state}\n```"
+            )
+
+        # Get temporal scope
         start_ts = datetime.now()
         end_ts = start_ts + timedelta(seconds=action.duration)
         start_ts_text = start_ts.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
         end_ts_text = end_ts.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
+
+        # Generate CloudTrail log
         cloudtrail_docs = load_aws_cloudtrail_docs()
         cloudtrail_prompt = textwrap.dedent(
             f"""
@@ -339,15 +389,15 @@ class AWSUser(User):
             ```
 
             Each record must conform with the following metadata:
-            ```
+            ---
             Action: {action.name}
             Objective: {action.description}
             AWS Caller Identity: {aws_caller_identity}
             AWS Service: {aws_service}
             AWS Method: {aws_method}
             User Agent: {user_agent}
-            Terraform state:\n{terraform_state}
-            ```
+            {terraform_state_prompt}
+            ---
 
             The JSON record must conform with the AWS CloudTrail JSON schema.
             Please predict a realistic `userAgent` in the JSON record.
@@ -361,17 +411,16 @@ class AWSUser(User):
         )
         self.logger.info(
             "🤖 Generate CloudTrail log given AWS Caller Identity:\n%s",
-            json.dumps(aws_caller_identity, indent=2)
+            json.dumps(aws_caller_identity, indent=2),
         )
         output = await async_openai_call(
             cloudtrail_prompt,
             system_context=system_context,
             response_format="json_object",
         )
-        self.logger.info("✅ Generated CloudTrail records:\n%s", json.dumps(output, indent=2))
-        
-        # Write log to ndjson
-        TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.touch()
+        self.logger.info(
+            "✅ Generated CloudTrail records:\n%s", json.dumps(output, indent=2)
+        )
 
         # We only want individual records
         if isinstance(output, dict):
@@ -380,6 +429,4 @@ class AWSUser(User):
             else:
                 records = [output]
 
-        for record in records:
-            with TRACECAT__LAB__AWS_CLOUDTRAIL_PATH.open("ab") as f:
-                f.write(orjson.dumps(record) + b"\n")
+        return records

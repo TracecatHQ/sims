@@ -12,11 +12,12 @@ import shutil
 import string
 import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import boto3
 import orjson
-from tqdm import tqdm
 
+from tracecat.attack.attacker import MaliciousStratusUser
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
@@ -158,17 +159,34 @@ def detonate_stratus(technique_id: str):
 
 
 async def simulate_stratus(
-    technique_id: str, delay: int, max_tasks: int, max_actions: int, timeout: int
+    technique_id: str,
+    user_name: str,
+    delay: int,
+    max_tasks: int,
+    max_actions: int,
+    timeout: int,
+    run_live: bool = False,
 ):
     user = NoisyStratusUser(
-        name="redpanda",
+        name=user_name,
         technique_id=technique_id,
         max_tasks=max_tasks,
         max_actions=max_actions,
     )
-    denotator = DelayedDetonator(
-        delay=delay, detonate=detonate_stratus, technique_id=technique_id
-    )
+
+    if run_live:
+        denotator = DelayedDetonator(
+            delay=delay, detonate=detonate_stratus, technique_id=technique_id
+        )
+    else:
+        denotator = MaliciousStratusUser(
+            name=user_name,
+            technique_id=technique_id,
+            # Assume very carefully executed attack
+            max_tasks=1,
+            max_actions=5,
+        )
+
     tasks = [user, denotator]
     await asyncio.wait_for(
         asyncio.gather(*[task.run() for task in tasks]),
@@ -193,6 +211,22 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
         )
 
 
+def _read_lab_logs(sources: list[Path]) -> io.BytesIO:
+    """Return gzipped logs."""
+    # Load ndjson file into list of dict
+    records = []
+    for source in sources:
+        with open(source, "r") as f:
+            for line in f:
+                # Parse the JSON line and append the resulting dictionary to the list
+                records.append(orjson.loads(line))
+
+    gzipped_records = io.BytesIO()
+    with gzip.GzipFile(fileobj=gzipped_records, mode="w") as gz_file:
+        gz_file.write(orjson.dumps(records))
+    gzipped_records.seek(0)
+
+
 def upload_lab_logs():
     """Upload generated fake lab logs into S3 bucket for AWS CloudTrail."""
 
@@ -212,18 +246,10 @@ def upload_lab_logs():
     file_name = f"{aws_account_id}_CloudTrail_{aws_default_region}_{ts_text}_{uuid.upper()}.json.gz"
     key = f"AWSLogs/{aws_account_id}/CloudTrail/{aws_default_region}/{date_text}/{file_name}"
 
-    # Load ndjson file into list of dict
-    njson_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail.ndjson"
-    records = []
-    with open(njson_logs_path, "r") as f:
-        for line in f:
-            # Parse the JSON line and append the resulting dictionary to the list
-            records.append(orjson.loads(line))
-
-    gzipped_records = io.BytesIO()
-    with gzip.GzipFile(fileobj=gzipped_records, mode="w") as gz_file:
-        gz_file.write(orjson.dumps(records))
-    gzipped_records.seek(0)
+    # Load ndjson files and gzip
+    normal_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail" / "normal.ndjson"
+    compromised_logs_path = TRACECAT__LAB_DIR / "aws_cloudtrail" / "compromised.ndjson"
+    gzipped_records = _read_lab_logs(sources=[normal_logs_path, compromised_logs_path])
 
     # Upload gzipped json
     s3_client = boto3.client("s3")
@@ -236,16 +262,20 @@ def upload_lab_logs():
     )
 
     # Delete old logs
-    os.remove(njson_logs_path)
+    os.remove(normal_logs_path)
+    os.remove(compromised_logs_path)
 
 
 async def ddos(
     scenario_id: str,
+    user_name: str | None = None,
     timeout: int | None = None,
     delay: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
+    run_live: bool = False,
 ):
+    user_name = "tracecat-user"
     timeout = timeout or 300
     delay = delay or 30
 
@@ -259,29 +289,36 @@ async def ddos(
     except KeyError as err:
         raise KeyError(f"Scenario {scenario_id!r} not recognized") from err
 
-    desc = "⚔️ Execute attack"
-    for i, technique_id in enumerate(tqdm(technique_ids, desc=desc)):
-        technique_desc = f"{desc} [{technique_id} | {i} of {kill_chain_length}]"
+    for i, technique_id in enumerate(technique_ids):
+        technique_desc = f"☢️ Execute campaign [{scenario_id} | Technique {i + 1} of {kill_chain_length} | {technique_id} | %s]"
 
         # Set up infrastructure
-        logger.info("%s: warm up", technique_desc)
-        warm_up_stratus(technique_id=technique_id)
+        if run_live:
+            logger.info(technique_desc, "🔥 Warm up")
+            warm_up_stratus(technique_id=technique_id)
 
         # Execute attack
         try:
-            logger.info("%s: simulate", technique_desc)
+            logger.info(technique_desc, "🎲 Run simulation")
             await simulate_stratus(
                 technique_id=technique_id,
+                user_name=user_name,
                 delay=delay,
                 max_tasks=max_tasks,
                 max_actions=max_actions,
                 timeout=timeout,
+                run_live=run_live,
             )
         except asyncio.TimeoutError:
-            logger.info("%s: ✅ timed out successfully", technique_desc)
-        finally:
-            logger.info("%s: 🗂️ Upload logs to S3", technique_desc)
-            upload_lab_logs()
+            logger.info(technique_desc, "✅ Timed out successfully")
+            if run_live:
+                logger.info(technique_desc, "🗂️ Upload logs to S3")
+                # NOTE: We should glob and upload all logs once after all attacks are executed
+                # Moreover, the log files should be organized under a `source/technique_id` directory structure.
+                # TODO: Broken.
+                upload_lab_logs()
 
     # Final clean up
+    logger.info("✅ Campaign {scenario_id!r} completed successfully")
+    logger.info("🧹 Clean up artifacts")
     clean_up_stratus(include_all=True)

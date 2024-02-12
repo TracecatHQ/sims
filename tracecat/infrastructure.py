@@ -1,8 +1,8 @@
 import os
 import subprocess
 from pathlib import Path
-from tracecat.config import path_to_pkg
 
+from tracecat.config import path_to_pkg
 from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
@@ -22,27 +22,25 @@ def run_terraform(cmds: list[str], chdir: str | None = None):
         env={**os.environ.copy(), "UID": str(os.getuid()), "GID": str(os.getgid())},
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True  # Ensure the output is returned as a string
+        text=True,  # Ensure the output is returned as a string
     )
     print(process.stdout)
     print(process.stderr)
     if "Error" in process.stdout or "Error" in process.stderr:
         raise TerraformRunError(process.stdout)
-    
 
-def show_terraform_state(path: str):
+
+def show_terraform_state(path: Path):
     # Assumes Terraform installed
-    os.path.exists(path)
     cmds = ["terraform", "show"]
     process = subprocess.run(
         cmds,
         cwd=path,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True  # Ensure the output is returned as a string
+        text=True,  # Ensure the output is returned as a string
     )
     if "Error" in process.stdout or "Error" in process.stderr:
         raise TerraformRunError(process.stdout)
     state = process.stdout
-    logger.info("🚧 Got Terraform state:\n%s", state)
     return state
