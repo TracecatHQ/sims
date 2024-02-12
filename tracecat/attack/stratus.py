@@ -260,7 +260,7 @@ async def ddos(
         raise KeyError(f"Scenario {scenario_id!r} not recognized") from err
 
     desc = "⚔️ Execute attack"
-    for i, technique_id in (pbar := enumerate(tqdm(technique_ids, desc=desc))):
+    for i, technique_id in enumerate(tqdm(technique_ids, desc=desc)):
         technique_desc = f"{desc} [{technique_id} | {i} of {kill_chain_length}]"
 
         # Set up infrastructure
