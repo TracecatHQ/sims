@@ -3,30 +3,27 @@
 This is a pentesting tool that assumes full visibility into your AWS inventory.
 """
 
-from datetime import datetime, timedelta
 import asyncio
-import boto3
 import gzip
 import io
-import orjson
 import os
 import random
 import secrets
 import shutil
-import subprocess
 import string
+import subprocess
+from datetime import datetime, timedelta
 
-from tracecat.ingestion.aws_cloudtrail import (
-    AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
-)
+import boto3
+import orjson
+
 from tracecat.attack.detonation import DelayedDetonator
 from tracecat.attack.noise import NoisyStratusUser
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.credentials import load_lab_credentials
-from tracecat.logger import standard_logger
-from tracecat.lab import deploy_lab
 from tracecat.infrastructure import TerraformRunError
-
+from tracecat.lab import deploy_lab
+from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 
@@ -70,7 +67,7 @@ AWS_ATTACK_TECHNIQUES = [
 def initialize_stratus_lab():
     # Create temporary admin user with Terraform
     # Two set of IAM keys are stored in labs/terraform/credentials.json
-    
+
     logger.info("🐱 Create new lab directory")
     TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -106,11 +103,11 @@ def _run_stratus_cmd(
             **os.environ.copy(),
             "AWS_ACCESS_KEY_ID": aws_access_key_id,
             "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
-            "AWS_DEFAULT_REGION": aws_default_region
+            "AWS_DEFAULT_REGION": aws_default_region,
         },
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True  # Ensure the output is returned as a string
+        text=True,  # Ensure the output is returned as a string
     )
     print(process.stdout)
     print(process.stderr)
@@ -124,12 +121,11 @@ def warm_up_stratus(technique_id: str):
     _run_stratus_cmd(
         cmds=["warmup", technique_id],
         aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
     )
 
 
 def detonate_stratus(technique_id: str):
-
     # Get creds for compromised user
     creds = load_lab_credentials(is_compromised=True)
     aws_access_key_id = creds["redpanda"]["aws_access_key_id"]
@@ -144,22 +140,16 @@ def detonate_stratus(technique_id: str):
 
 
 async def simulate_stratus(
-    technique_id: str,
-    delay: int,
-    max_tasks: int,
-    max_actions: int,
-    timeout: int
+    technique_id: str, delay: int, max_tasks: int, max_actions: int, timeout: int
 ):
     user = NoisyStratusUser(
         name="redpanda",
         technique_id=technique_id,
         max_tasks=max_tasks,
-        max_actions=max_actions
+        max_actions=max_actions,
     )
     denotator = DelayedDetonator(
-        delay=delay,
-        detonate=detonate_stratus,
-        technique_id=technique_id
+        delay=delay, detonate=detonate_stratus, technique_id=technique_id
     )
     tasks = [user, denotator]
     await asyncio.wait_for(
@@ -175,20 +165,19 @@ def clean_up_stratus(technique_id: str | None = None, include_all: bool = False)
         _run_stratus_cmd(
             ["cleanup", "--all"],
             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
     else:
         _run_stratus_cmd(
             ["cleanup", technique_id],
             aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"]
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
 
 
 def upload_lab_logs():
-    """Upload generated fake lab logs into S3 bucket for AWS CloudTrail.
-    """
-    
+    """Upload generated fake lab logs into S3 bucket for AWS CloudTrail."""
+
     # Get S3 location
     aws_account_id = os.environ["AWS_ACCOUNT_ID"]
     aws_default_region = os.environ["AWS_DEFAULT_REGION"]
@@ -225,7 +214,7 @@ def upload_lab_logs():
         Bucket=bucket_name,
         Key=key,
         ContentEncoding="gzip",
-        ContentType="application/json"
+        ContentType="application/json",
     )
 
     # Delete old logs
@@ -239,7 +228,6 @@ async def ddos(
     max_tasks: int | None = None,
     max_actions: int | None = None,
 ):
-
     timeout = timeout or 300
     delay = delay or 30
 
@@ -252,7 +240,7 @@ async def ddos(
 
         logger.info("🚧 Warm up infrastructure %r", technique_id)
         warm_up_stratus(technique_id=technique_id)
-        
+
         try:
             logger.info("🎲 Run simulation %r", technique_id)
             await simulate_stratus(
@@ -260,10 +248,14 @@ async def ddos(
                 delay=delay,
                 max_tasks=max_tasks,
                 max_actions=max_actions,
-                timeout=timeout
+                timeout=timeout,
             )
         except asyncio.TimeoutError:
-            logger.info("✅ Simulation %r timed out successfully after %s seconds", technique_id, timeout)
+            logger.info(
+                "✅ Simulation %r timed out successfully after %s seconds",
+                technique_id,
+                timeout,
+            )
         finally:
             logger.info("🗂️ Upload logs to S3 %r", technique_id)
             upload_lab_logs()
