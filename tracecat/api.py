@@ -364,7 +364,7 @@ def get_all_rules():
             severity=np.random.choice(["low", "medium", "high"], df.height),
             truePositives=np.random.randint(1, 3, df.height),
             falsePositives=np.random.randint(4, 15, df.height),
-            relatedFindings=np.random.randint(4, 15, df.height),
+            relatedAttacks=np.random.randint(4, 15, df.height),
             timeSavable=pl.lit(None),
             tunedScore=pl.lit(None),
             tunedAlerts=pl.lit(None),
