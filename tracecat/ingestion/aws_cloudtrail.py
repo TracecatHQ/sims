@@ -1,6 +1,5 @@
 import gzip
 import io
-import os
 from datetime import datetime, timedelta
 from functools import partial
 from itertools import chain
@@ -15,16 +14,13 @@ from tqdm.contrib.concurrent import thread_map
 from tracecat.config import (
     LOGS_FILE_TIMESTAMP_FORMAT,
     TRACECAT__LOGS_DIR,
-    TRACECAT__TRIAGE_DIR,
 )
 from tracecat.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 
 
-AWS_CLOUDTRAIL__TRIAGE_DIR = TRACECAT__TRIAGE_DIR / "aws_cloudtrail"
 AWS_CLOUDTRAIL__LOGS_DIR = TRACECAT__LOGS_DIR / "aws_cloudtrail"
-AWS_CLOUDTRAIL__TRIAGE_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -117,7 +113,9 @@ def _record_to_json(record: dict, json_fields: list[str]) -> dict:
     return orjson.dumps(normalized_record)
 
 
-def _load_cloudtrail_gzip(object_name: str, bucket_name: str) -> Path:
+def _load_cloudtrail_gzip(
+    object_name: str, bucket_name: str, triage_source: Path
+) -> Path:
     # Download using boto3
     buffer = io.BytesIO()
     client = boto3.client("s3")
@@ -127,11 +125,13 @@ def _load_cloudtrail_gzip(object_name: str, bucket_name: str) -> Path:
     with gzip.GzipFile(fileobj=buffer, mode="rb") as f:
         records = orjson.loads(f.read().decode("utf-8"))["Records"]
     # NOTE: We force nested JSONs to be strings
-    ndjson_file_path = (AWS_CLOUDTRAIL__TRIAGE_DIR / uuid4().hex).with_suffix(".ndjson")
+    ndjson_file_path = (triage_source / uuid4().hex).with_suffix(".ndjson")
     with open(ndjson_file_path, "w") as f:
         # Stream each record into an ndjson file
         for record in records:
-            log_bytes = _record_to_json(record=record, json_fields=AWS_CLOUDTRAIL__NESTED_FIELDS)
+            log_bytes = _record_to_json(
+                record=record, json_fields=AWS_CLOUDTRAIL__NESTED_FIELDS
+            )
             f.write(log_bytes.decode("utf-8") + "\n")
     return ndjson_file_path
 
@@ -154,10 +154,11 @@ def _load_cloudtrail_ndjson(
     logs = (
         # NOTE: This might cause memory to blow up
         raw_logs.select(AWS_CLOUDTRAIL__SELECTED_FIELDS)
-        .filter(pl.col("eventTime").str.strptime(
-            format=AWS_CLOUDTRAIL__EVENT_TIME_FORMAT,
-            dtype=pl.Datetime
-        ).is_between(start, end))
+        .filter(
+            pl.col("eventTime")
+            .str.strptime(format=AWS_CLOUDTRAIL__EVENT_TIME_FORMAT, dtype=pl.Datetime)
+            .is_between(start, end)
+        )
         .filter(pl.col("accessKeyId").is_in(malicious_ids + normal_ids))
         # Defensive to avoid concats with mismatched struct column schemas
         .select(pl.all().cast(pl.Utf8))
@@ -169,6 +170,7 @@ def _load_cloudtrail_ndjson(
 
 
 def load_cloudtrail_logs(
+    triage_source: Path,
     account_id: str,
     bucket_name: str,
     regions: list[str],
@@ -198,7 +200,9 @@ def load_cloudtrail_logs(
         regions=regions,
     )
     ndjson_file_paths = thread_map(
-        partial(_load_cloudtrail_gzip, bucket_name=bucket_name),
+        partial(
+            _load_cloudtrail_gzip, bucket_name=bucket_name, triage_source=triage_source
+        ),
         object_names,
         desc="📂 Download AWS CloudTrail logs",
     )
@@ -207,23 +211,24 @@ def load_cloudtrail_logs(
         start=start,
         end=end,
         malicious_ids=malicious_ids,
-        normal_ids=normal_ids
+        normal_ids=normal_ids,
     )
     return logs_file_path
 
 
 def load_triaged_cloudtrail_logs(
+    triage_source: Path,
     start: datetime,
     end: datetime,
     malicious_ids: list[str],
-    normal_ids: list[str]
+    normal_ids: list[str],
 ) -> Path:
-    ndjson_file_paths = AWS_CLOUDTRAIL__TRIAGE_DIR.glob("*")
+    ndjson_file_paths = triage_source.glob("*")
     logs_file_path = _load_cloudtrail_ndjson(
         ndjson_file_paths,
         start=start,
         end=end,
         malicious_ids=malicious_ids,
-        normal_ids=normal_ids
+        normal_ids=normal_ids,
     )
     return logs_file_path
