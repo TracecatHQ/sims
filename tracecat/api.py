@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
@@ -15,13 +14,8 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
-from tracecat.attack.stratus import clean_up_stratus, ddos
+from tracecat.attack.stratus import ddos
 from tracecat.config import TRACECAT__API_DIR
-from tracecat.lab import (
-    LabResults,
-    clean_up_lab,
-    evaluate_lab,
-)
 from tracecat.logger import standard_logger, tail_file
 
 load_dotenv(find_dotenv())
@@ -149,42 +143,6 @@ def root():
 # Core API
 
 
-@app.get("/lab", response_model=LabResults)
-def get_lab(
-    bucket_name: str | None = None,
-    regions: list[str] | None = None,
-    account_id: str = None,
-    malicious_ids: list[str] | None = None,
-    normal_ids: list[str] | None = None,
-    buffer_time: int | None = None,
-    triage: bool = False,
-):
-    """Get lab results.
-
-    Assumes lab simulation succesfully finished.
-    """
-    # NOTE: Very crude approximation...will need a place
-    # to store state of start and time detonation times.
-    # NOTE: The more buffer the safer: at least 6 hours.
-    # It's easier to deal with duplicate events downstream
-    # than no events at all...
-    logger.info("🔬 Evaluate lab simulation")
-    buffer_time = buffer_time or 21_600
-    buffer_delta = timedelta(seconds=buffer_time)
-    now = datetime.now().replace(second=0, microsecond=0)
-    results = evaluate_lab(
-        start=now - buffer_delta,
-        end=now + buffer_delta,
-        account_id=account_id,
-        bucket_name=bucket_name,
-        regions=regions,
-        malicious_ids=malicious_ids,
-        normal_ids=normal_ids,
-        triage=triage,
-    )
-    return results
-
-
 @app.post("/ddos")
 async def create_ddos_lab(
     background_tasks: BackgroundTasks,
@@ -204,26 +162,6 @@ async def create_ddos_lab(
         max_actions=max_actions,
     )
     return {"message": "Lab created"}
-
-
-@app.delete("/lab")
-def delete_lab(force: bool = False):
-    """Destroy live infrastructure and stop Terraform Docker container.
-
-    Raises
-    ------
-    FailedTerraformDestory if `terraform destroy` was unsuccessful.
-    Container is not stopped in this case.
-    """
-    clean_up_lab(force=force)
-    clean_up_stratus(include_all=True)
-    if force:
-        logger.info("✅ Lab cleanup complete. What will you break next?")
-    else:
-        logger.info(
-            "✅🛎️ Infrastructure cleanup complete."
-            " Rerun clean up with `force=True` to destroy remaining artifacts."
-        )
 
 
 # Live Agent Feeds
