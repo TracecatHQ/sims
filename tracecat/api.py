@@ -7,8 +7,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Optional
 
-import numpy as np
-import polars as pl
 from dotenv import find_dotenv, load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,15 +16,13 @@ from sse_starlette.sse import EventSourceResponse
 
 from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
 from tracecat.attack.stratus import clean_up_stratus, ddos
-from tracecat.autotuner import optimizer
-from tracecat.config import TRACECAT__API_DIR, TRACECAT__AUTOTUNER_DIR
+from tracecat.config import TRACECAT__API_DIR
 from tracecat.lab import (
     LabResults,
     clean_up_lab,
     evaluate_lab,
 )
 from tracecat.logger import standard_logger, tail_file
-from tracecat.schemas.datadog import RuleUpdateRequest
 
 load_dotenv(find_dotenv())
 logger = standard_logger(__name__)
@@ -309,164 +305,3 @@ async def stream_events_distribution(id: Annotated[str, Depends(validate_events_
     path = TRACECAT__API_DIR / "api_calls.json"
     calls = safe_json_load(path)
     return calls
-
-
-# TODO: Change this out for a real implementation
-TEMPORARY_AUTOTUNE_DB_PATH = Path(".data/datadog.parquet").expanduser()
-PY_TO_TS_SCHEMA = {"rule_id": "id", "rule_name": "ruleName", "tactic": "ttp"}
-
-
-@app.get("/autotune/banner")
-def get_autotune_banner():
-    return [
-        {"key": "fixed-detections", "value": "11", "subtitleValue": "159"},
-        {"key": "hours-saved", "value": "52 Hours", "subtitleValue": "457"},
-        {"key": "money-saveable", "value": "$19283", "subtitleValue": "268901"},
-    ]
-
-
-@app.get("/autotune/rules/")
-def get_all_rules():
-    """Get all rules.
-
-    The assumption is all rules have already been evaluated ahead of time.
-    This endpoint should return all rules with evaluation metrics done.
-    The user should only then commit the new rules.
-
-    Here we set the actual number of alerts.
-    Whatever is shown on the UI should be inflated by a random number.
-    """
-    df = (
-        pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
-        .drop_nulls()
-        .select(
-            [
-                "rule_id",
-                "rule_name",
-                "source",
-                "tactic",
-                "technique",
-                "queries",
-                "cases",
-                "message",
-            ]
-        )
-        .filter(pl.col.source == "cloudtrail")
-        .collect(streaming=True)
-    )
-    return (
-        df.lazy()
-        .rename(PY_TO_TS_SCHEMA)
-        .with_columns(
-            score=np.random.randint(0, 65, df.height),
-            status=pl.lit("todo"),
-            alerts=np.random.randint(4, 15, df.height),
-            severity=np.random.choice(["low", "medium", "high"], df.height),
-            truePositives=np.random.randint(1, 3, df.height),
-            falsePositives=np.random.randint(4, 15, df.height),
-            relatedAttacks=np.random.randint(4, 15, df.height),
-            timeSavable=pl.lit(None),
-            tunedScore=pl.lit(None),
-            tunedAlerts=pl.lit(None),
-        )
-        .collect(streaming=True)
-        .to_dicts()
-    )
-
-
-@app.get("/autotune/rules/{id}")
-def get_rule(id: str):
-    df = (
-        pl.scan_parquet(TEMPORARY_AUTOTUNE_DB_PATH)
-        .filter(pl.col.rule_id == id)
-        .collect(streaming=True)
-    )
-    if df.is_empty():
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    res = (
-        df.lazy()
-        .with_columns(
-            score=pl.lit(np.random.randint(0, 100)),
-            status=pl.lit("active"),
-            timeSavable=pl.lit(np.random.randint(0, 100)),
-            severity=pl.lit(np.random.choice(["low", "medium", "high"])),
-        )
-        .rename(PY_TO_TS_SCHEMA)
-        .collect(streaming=True)
-    ).to_dicts()[0]
-    return res
-
-
-def get_results_dir(rule_id: str, variant: str = "datadog"):
-    path = TRACECAT__AUTOTUNER_DIR / "results" / f"{variant}_{rule_id}"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-async def run_optimizer_single(rule_id: str):
-    rule_data = get_rule(rule_id)
-    rule = RuleUpdateRequest.model_validate(rule_data)
-
-    opt_results = await optimizer.optimize_rule(
-        rule_id, rule, variant="datadog", strategy="user_select"
-    )
-    with get_results_dir(rule_id).joinpath("results.json").open("w") as f:
-        data = [res.model_dump() for res in opt_results]
-        json.dump(data, f, indent=2)
-        logger.info(f"Successfully wrote {len(data)} options to disk")
-    logger.info(f"Finished running optimizer for rule {rule_id}")
-
-
-@app.post("/autotune/optimizer/run")
-async def run_optimizer(rule_ids: list[str]):
-    """Run the optimizer for the given rule and return the recommendation results.
-
-    This should trigger a background job.
-
-    Additionally saves the recommendation results to a directory.
-
-    For each rule, run the optimizer
-    Optimizer Steps (This is repeated in parallel 10x):
-    1. LLM Suggests a new rule using few show prompting with input/output examples
-      - Optional data enrichment step (RAG, threat intel)
-    2. We now have N new rules. Run these against the datdog API and return the results.
-
-    """
-
-    queue = TRACECAT__JOB_QUEUES["optimizer"]
-
-    # NOTE(perf): We should probably batch these 'gather' steps for performance in prod
-    logger.info("Queueing jobs for optimizer evaluation step")
-    for rule_id in rule_ids:
-        queue.put_nowait({"id": rule_id, "coro": run_optimizer_single(rule_id)})
-
-    return {"status": "ok", "message": f"{len(rule_ids)} optimizer jobs completed"}
-
-
-@app.get(
-    "/autotune/optimizer/results/{rule_id}",
-    response_model=list[optimizer.OptimizerResult],
-)
-async def get_optimizer_results(rule_id: str):
-    """Return the results for the given rule."""
-    path = get_results_dir(rule_id) / "results.json"
-    with path.open("r") as f:
-        data = json.load(f)
-    results = [optimizer.OptimizerResult.model_validate(r) for r in data]
-    return results
-
-
-@app.get(
-    "/autotune/optimizer/results/{rule_id}/{index}",
-    response_model=optimizer.OptimizerResult,
-)
-async def get_optimizer_result_by_index(rule_id: str, index: int):
-    """Return the index-th result for the given rule."""
-    path = get_results_dir(rule_id) / "results.json"
-    with path.open("r") as f:
-        data = json.load(f)
-    if index >= len(data):
-        raise HTTPException(status_code=404, detail="Index not found")
-    result = optimizer.OptimizerResult.model_validate(data[index])
-    return result
