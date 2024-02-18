@@ -42,7 +42,6 @@ import orjson
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
-from tracecat.credentials import get_caller_identity, load_lab_credentials
 from tracecat.infrastructure import show_terraform_state
 from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
 from tracecat.llm import async_openai_call
@@ -201,10 +200,6 @@ class User(ABC):
     async def _make_api_call(self, action: AWSAPICallAction) -> list[dict]:
         pass
 
-    @abstractmethod
-    async def _write_api_logs(self, logs: list[dict]):
-        pass
-
     async def _perform_action(self, action: AWSAPICallAction) -> list[dict]:
         """Perform action and return list of API logs."""
         # Make call
@@ -288,14 +283,8 @@ class AWSAPIServiceMethod(BaseModel):
 
 
 class AWSUser(User):
-    def _get_aws_credentials(self):
-        creds = load_lab_credentials(is_compromised=self.is_compromised)
-        aws_access_key_id = creds[self.name]["aws_access_key_id"]
-        aws_secret_access_key = creds[self.name]["aws_secret_access_key"]
-        return {
-            "aws_access_key_id": aws_access_key_id,
-            "aws_secret_access_key": aws_secret_access_key,
-        }
+    def _simulate_caller_identity(self):
+        pass
 
     async def _write_api_logs(self, logs: list[dict]):
         # Write logs to ndjson
@@ -348,21 +337,7 @@ class AWSUser(User):
             ) from e
 
         # Get AWS user credentials
-        creds = self._get_aws_credentials()
-
-        # Test lab
-        if "EXAMPLE" in creds["aws_access_key_id"]:
-            aws_caller_identity = {
-                "aws_access_key_id": creds["aws_access_key_id"],
-                "aws_secret_access_key": creds["aws_secret_access_key"],
-                "aws_default_region": "us-east-1",
-            }
-        else:
-            # Live lab
-            aws_caller_identity = get_caller_identity(
-                aws_access_key_id=creds["aws_access_key_id"],
-                aws_secret_access_key=creds["aws_secret_access_key"],
-            )
+        aws_caller_identity = self._simulate_caller_identity()
 
         # Get terraform state
         terraform_state = self.terraform_state
