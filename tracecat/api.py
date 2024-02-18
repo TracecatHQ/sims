@@ -20,9 +20,6 @@ logger = standard_logger(__name__)
 
 TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
 
-for q in ["statistics", "activity"]:
-    TRACECAT__LOG_QUEUES[q] = asyncio.Queue()
-
 
 async def tail_file_handler():
     async for line in tail_file(TRACECAT__LAB__ACTIONS_LOGS_PATH):
