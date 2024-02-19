@@ -63,13 +63,19 @@ def root():
 @app.post("/ddos")
 async def create_ddos_lab(
     uuid: str,
-    technique_ids: list[str],
     background_tasks: BackgroundTasks,
+    technique_ids: list[str] | None = None,
     # Temporary default to speedup development
     timeout: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
 ):
+    technique_ids = technique_ids or [
+        "aws.execution.ssm-start-session",  # Execution
+        "aws.credential-access.ec2-get-password-data",  # Credential Access
+        "aws.discovery.ec2-enumerate-from-instance",  # Discovery
+        "aws.exfiltration.ec2-share-ami",  # Exfiltration
+    ]
     background_tasks.add_task(
         ddos,
         uuid=uuid,

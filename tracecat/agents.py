@@ -258,7 +258,7 @@ class User(ABC):
                 uuid=self.uuid,
                 user_name=self.name,
                 thought=objective.model_dump(),
-                tag="background",
+                tag="objective",
                 is_compromised=self.is_compromised,
             )
             self.thoughts_logger.info(objective_log)
@@ -352,6 +352,7 @@ class AWSUser(User):
             - Background: {background}
             - Objective: {objective.description}
             - Action: {action}
+            - If you are a malicious user, use a non-malicious AWS identity.
 
             Create a `AWSCallerIdentity` according to the following pydantic model:
             ```
