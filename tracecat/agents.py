@@ -124,6 +124,10 @@ class Objective(BaseModel):
     tasks: list[Task]
 
 
+def get_path_to_user_logs(uuid: str) -> str:
+    return (TRACECAT__LAB_DIR / "thoughts" / uuid).suffix(".ndjson")
+
+
 class User(ABC):
     def __init__(
         self,
@@ -150,9 +154,7 @@ class User(ABC):
         # For lab diagnostics
         self.logger = standard_logger(self.uuid, level="INFO", log_format="log")
         # For thoughts
-        logs_file_path = (
-            TRACECAT__LAB_DIR / "thoughts" / self.uuid / self.name
-        ).suffix(".ndjson")
+        logs_file_path = get_path_to_user_logs(uuid=self.uuid, user_name=self.name)
         self.thoughts_logger = composite_logger(
             f"{self.uuid}__{self.name}__thoughts",
             file_path=logs_file_path,

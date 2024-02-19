@@ -11,6 +11,7 @@ class NoisyStratusUser(AWSUser):
 
     def __init__(
         self,
+        uuid: str,
         name: str,
         technique_id: str,
         max_tasks: int | None = None,
@@ -19,6 +20,7 @@ class NoisyStratusUser(AWSUser):
         self.technique_id = technique_id
         terraform_path = STRATUS__HOME_DIR / technique_id
         super().__init__(
+            uuid=uuid,
             name=name,
             terraform_path=terraform_path,
             is_compromised=False,

@@ -68,18 +68,21 @@ AWS_ATTACK_SCENARIOS = {
 
 async def simulate_stratus(
     technique_id: str,
+    uuid: str,
     user_name: str,
     max_tasks: int,
     max_actions: int,
     timeout: int,
 ):
     user = NoisyStratusUser(
+        uuid=uuid,
         name=user_name,
         technique_id=technique_id,
         max_tasks=max_tasks,
         max_actions=max_actions,
     )
     denotator = MaliciousStratusUser(
+        uuid=uuid,
         name=user_name,
         technique_id=technique_id,
         # Assume very carefully executed attack
@@ -96,6 +99,7 @@ async def simulate_stratus(
 
 async def ddos(
     scenario_id: str,
+    uuid: str,
     user_name: str | None = None,
     timeout: int | None = None,
     delay: int | None = None,
@@ -121,6 +125,7 @@ async def ddos(
             logger.info(technique_desc, "🎲 Run simulation")
             await simulate_stratus(
                 technique_id=technique_id,
+                uuid=uuid,
                 user_name=user_name,
                 delay=delay,
                 max_tasks=max_tasks,

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from sse_starlette.sse import EventSourceResponse
 
-from tracecat.agents import TRACECAT__LAB__ACTIONS_LOGS_PATH
+from tracecat.agents import get_path_to_user_logs
 from tracecat.attack.stratus import ddos
 from tracecat.logger import standard_logger, tail_file
 
@@ -21,22 +21,7 @@ logger = standard_logger(__name__)
 TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
 
 
-async def tail_file_handler():
-    async for line in tail_file(TRACECAT__LAB__ACTIONS_LOGS_PATH):
-        line = line.strip()
-        for _, q in TRACECAT__LOG_QUEUES.items():
-            await q.put(line)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Context manager to run the API for its lifespan."""
-    logger.info("Starting API")
-    asyncio.create_task(tail_file_handler())
-    yield
-
-
-app = FastAPI(debug=True, default_response_class=ORJSONResponse, lifespan=lifespan)
+app = FastAPI(debug=True, default_response_class=ORJSONResponse)
 
 origins = [
     "http://localhost",
@@ -77,6 +62,7 @@ def root():
 
 @app.post("/ddos")
 async def create_ddos_lab(
+    uuid: str,
     background_tasks: BackgroundTasks,
     # Temporary default to speedup development
     scenario_id: str = "ec2-brute-force",
@@ -87,6 +73,7 @@ async def create_ddos_lab(
 ):
     background_tasks.add_task(
         ddos,
+        uuid=uuid,
         scenario_id=scenario_id,
         timeout=timeout,
         delay=delay,
@@ -94,3 +81,26 @@ async def create_ddos_lab(
         max_actions=max_actions,
     )
     return {"message": "Lab created"}
+
+
+# Live stream
+
+
+async def tail_file_handler(uuid: str, queue: asyncio.Queue):
+    file_path = get_path_to_user_logs(uuid=uuid)
+    async for line in tail_file(file_path=file_path):
+        line = line.strip()
+        await queue.put(line)
+
+
+@app.get("/feed/logs/{uuid}", response_class=EventSourceResponse)
+async def stream_agent_logs(uuid: str):
+    queue = TRACECAT__LOG_QUEUES.get("uuid", asyncio.Queue())
+    asyncio.create_task(tail_file_handler(uuid=uuid, queue=queue))
+
+    async def log_stream():
+        while True:
+            item = await queue.get()
+            yield item
+
+    return EventSourceResponse(log_stream())
