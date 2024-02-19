@@ -76,7 +76,6 @@ async def create_ddos_lab(
         uuid=uuid,
         scenario_id=scenario_id,
         timeout=timeout,
-        delay=delay,
         max_tasks=max_tasks,
         max_actions=max_actions,
     )

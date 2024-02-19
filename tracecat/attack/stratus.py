@@ -102,14 +102,11 @@ async def ddos(
     uuid: str,
     user_name: str | None = None,
     timeout: int | None = None,
-    delay: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
-    run_live: bool = False,
 ):
     user_name = "tracecat-user"
     timeout = timeout or 300
-    delay = delay or 30
 
     # Run simulation
     try:
@@ -127,11 +124,9 @@ async def ddos(
                 technique_id=technique_id,
                 uuid=uuid,
                 user_name=user_name,
-                delay=delay,
                 max_tasks=max_tasks,
                 max_actions=max_actions,
                 timeout=timeout,
-                run_live=run_live,
             )
         except asyncio.TimeoutError:
             logger.info(technique_desc, "✅ Timed out successfully")
