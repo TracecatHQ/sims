@@ -402,7 +402,7 @@ class AWSUser(User):
             ) from e
 
         # Get AWS user credentials
-        aws_caller_identity = self._simulate_caller_identity(action=action)
+        aws_caller_identity = await self._simulate_caller_identity(action=action)
 
         # Get terraform state
         terraform_state = self.terraform_state
