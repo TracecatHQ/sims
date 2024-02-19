@@ -353,27 +353,6 @@ class AWSUser(User):
             - Objective: {objective.description}
             - Action: {action}
 
-            Here are the schemas for `userid` given principal type:
-
-            | Principal                                           | aws:username | aws:userid                              | aws:PrincipalType |
-            |-----------------------------------------------------|--------------|-----------------------------------------|-------------------|
-            | AWS account root user                               | (not present)| AWS account ID                          | Account           |
-            | IAM user                                            | IAM-user-name| unique ID                               | User              |
-            | Federated user                                      | (not present)| account:caller-specified-name           | FederatedUser     |
-            | Web federated user (Login with Amazon, Amazon Cognito, Facebook, Google) | (not present) | role-id:caller-specified-role-name    | AssumedRole       |
-            | SAML federated user                                 | (not present)| role-id:caller-specified-role-name      | AssumedRole       |
-            | Assumed role                                        | (not present)| role-id:caller-specified-role-name      | AssumedRole       |
-            | Role assigned to an Amazon EC2 instance             | (not present)| role-id:ec2-instance-id                 | AssumedRole       |
-            | Anonymous caller (Amazon SQS, Amazon SNS, and Amazon S3 only) | (not present) | anonymous                            | Anonymous         |
-
-            For the items in this table, note the following:
-            - Not present means that the value is not in the current request information, and any attempt to match it fails and causes the statement to be invalid.
-            - role-id is a unique identifier assigned to each role at creation. You can display the role ID with the AWS CLI command: aws iam get-role --role-name rolename
-            - caller-specified-name and caller-specified-role-name are names that are passed by the calling process (such as an application or service) when it makes a call to get temporary credentials.
-            - ec2-instance-id is a value assigned to the instance when it is launched and appears on the Instances page of the Amazon EC2 console. You can also display the instance ID by running the AWS CLI command: aws ec2 describe-instances
-
-            Make up a story for the userIDs and ARN names.
-
             Create a `AWSCallerIdentity` according to the following pydantic model:
             ```
             {model_as_text(AWSCallerIdentity)}
