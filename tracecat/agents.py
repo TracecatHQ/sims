@@ -56,11 +56,26 @@ def model_as_text(model: type[T]) -> str:
 __REPLACE_WITH_ACTIONS_LIST__ = str
 
 
+class Background(BaseModel):
+    """User background.
+
+    Parameters
+    ----------
+    job_title: str
+        The user's job title.
+    description: str
+        The user's background.
+    """
+
+    job_title: str
+    description: str
+
+
 class AWSAPICallAction(BaseModel):
     """An action that a user can perform.
 
     Parameters
-    -----------
+    ----------
     name: str
         The name of the AWS service and API call (e.g. `s3:ListBucket`).
         This must be explicitly mentioned in the "Background" or "Objectives".
@@ -229,7 +244,7 @@ class User(ABC):
         background_log = ThoughtLog(
             uuid=self.uuid,
             user_name=self.name,
-            thought=background,
+            thought={"": background},
             _tag="background",
             _is_compromised=self.is_compromised,
         )

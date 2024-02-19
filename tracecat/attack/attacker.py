@@ -1,7 +1,14 @@
 import subprocess
 import textwrap
 
-from tracecat.agents import AWSAPICallAction, AWSUser, Objective, Task, model_as_text
+from tracecat.agents import (
+    AWSAPICallAction,
+    AWSUser,
+    Background,
+    Objective,
+    Task,
+    model_as_text,
+)
 from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import async_openai_call
 
@@ -28,7 +35,7 @@ class MaliciousStratusUser(AWSUser):
             max_actions=max_actions,
         )
 
-    async def _get_background(self) -> str:
+    async def _get_background(self) -> dict:
         technique_id = self.technique_id
         stratus_show_output = subprocess.run(
             ["stratus", "show", technique_id], capture_output=True, text=True
@@ -39,16 +46,20 @@ class MaliciousStratusUser(AWSUser):
             "You are an expert red teamer."
             "You always mention at least one specific AWS API call in every write-up."
         )
-        prompt = (
-            f"Your task is to create an attacker motive that aligns with this attack description:\n```{attack_description}```"
-            "\nThe motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist."
-            "Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description."
+        prompt = textwrap.dedent(
+            f"""Your task is to create an attacker motive that aligns with this attack description:\n```{attack_description}```
+            The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
+            Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description.
+
+            Describe the background according to the following pydantic schema:
+            {model_as_text(Background)}
+            """
         )
         background = await async_openai_call(
             prompt,
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
-            response_format="text",
+            response_format="json_object",
             model="gpt-3.5-turbo-1106",
         )
         return background

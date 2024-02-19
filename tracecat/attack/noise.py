@@ -1,7 +1,14 @@
 import subprocess
 import textwrap
 
-from tracecat.agents import AWSAPICallAction, AWSUser, Objective, Task, model_as_text
+from tracecat.agents import (
+    AWSAPICallAction,
+    AWSUser,
+    Background,
+    Objective,
+    Task,
+    model_as_text,
+)
 from tracecat.config import STRATUS__HOME_DIR
 from tracecat.llm import async_openai_call
 
@@ -40,10 +47,15 @@ class NoisyStratusUser(AWSUser):
             "You are an expert in spoofing in the Cloud."
             "You always mention at least one specific AWS API call in every write-up."
         )
-        prompt = (
-            f"Your task is to rewrite this attack description:\n```{attack_description}```"
-            "\nInto a description of a software engineer or DevOps engineer (pick one job title)."
-            "\nUse the same tools and techniques as described in the attack but in a non-malicious way."
+        prompt = textwrap.dedent(
+            f"""Your task is to rewrite this attack description:
+            ```{attack_description}```
+            Into a description of a software engineer or DevOps engineer (pick one job title).
+            Use the same tools and techniques as described in the attack but in a non-malicious way.
+
+            Describe the background according to the following pydantic schema:
+            {model_as_text(Background)}
+            """
         )
 
         background = await async_openai_call(
