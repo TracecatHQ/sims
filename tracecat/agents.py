@@ -270,7 +270,7 @@ class User(ABC):
                         user_name=self.name,
                         thought=audit_log,
                         _tag="log",
-                        _is_compromised=self._is_compromised,
+                        _is_compromised=self.is_compromised,
                     )
                     self.thoughts_logger.info(audit_log)
             self.objectives.append(f"{objective.name}: {objective.description}")
