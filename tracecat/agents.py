@@ -409,7 +409,6 @@ class AWSUser(User):
         end_ts_text = end_ts.strftime(AWS_CLOUDTRAIL__EVENT_TIME_FORMAT)
 
         # Generate CloudTrail log
-        cloudtrail_docs = load_aws_cloudtrail_docs()
         cloudtrail_prompt = textwrap.dedent(
             f"""
             You objective is to create realistic AWS CloudTrail JSON records with `eventTime` set between {start_ts_text} and {end_ts_text}.
@@ -432,11 +431,6 @@ class AWSUser(User):
             The JSON record must conform with the AWS CloudTrail JSON schema.
             Please predict a realistic `userAgent` in the JSON record.
             If applicable, please include realistic `requestParameters` and `responseElements` in the JSON record.
-
-            You must use the following AWS CloudTrail documentation in HTML as a guide:
-            ```html
-            {cloudtrail_docs}
-            ```
             """
         )
         self.logger.info(

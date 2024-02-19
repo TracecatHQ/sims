@@ -53,7 +53,7 @@ class NoisyStratusUser(AWSUser):
             Into a description of a software engineer or DevOps engineer (pick one job title).
             Use the same tools and techniques as described in the attack but in a non-malicious way.
 
-            Describe the background according to the following pydantic schema:
+            Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}
             """
         )

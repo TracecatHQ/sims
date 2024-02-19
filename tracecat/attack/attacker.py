@@ -51,7 +51,7 @@ class MaliciousStratusUser(AWSUser):
             The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
             Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description.
 
-            Describe the background according to the following pydantic schema:
+            Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}
             """
         )
