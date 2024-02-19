@@ -167,6 +167,7 @@ class User(ABC):
         self.max_actions = max_actions or 10
         self.objectives: list[str] = []
         self.background = None  # Only set at .run
+        self.objective = None  # Latest objective
         # For lab diagnostics
         self.logger = standard_logger(self.uuid, level="INFO", log_format="log")
         # For thoughts
@@ -244,13 +245,14 @@ class User(ABC):
         background_log = ThoughtLog(
             uuid=self.uuid,
             user_name=self.name,
-            thought={"": background},
+            thought=background,
             _tag="background",
             _is_compromised=self.is_compromised,
         )
         self.thoughts_logger.info(background_log)
         while True:
             objective = await self.get_objective()
+            self.objective = objective
             # Log Objective, Tasks, and Actions
             objective_log = ThoughtLog(
                 uuid=self.uuid,
@@ -283,7 +285,7 @@ def load_aws_cloudtrail_docs() -> list[dict]:
 
 
 class AWSAPIServiceMethod(BaseModel):
-    """Python Boto3 Service and Method
+    """AWS API Service and Method
 
     Parameters
     ----------
@@ -317,16 +319,21 @@ class AWSAPIServiceMethod(BaseModel):
 
 
 class AWSCallerIdentity(BaseModel):
-    """Represents the identity of the AWS caller.
+    """Represents the realistic identity for a real AWS principal interacting with a real app.
+    Make up a story.
+
 
     Parameters
     ----------
     account: str
         The AWS account ID number of the account that owns or contains the calling entity.
     user_id: str
-        The unique identifier of the calling entity. The exact value depends on the form of the call.
+        Depends on the principal that is initiating the request.
+
     arn: str
         The AWS ARN associated with the calling entity. This can be the ARN of an AWS user, role, or assumed role.
+        The ARN naming must be description of it's intended use.
+        If it's malicious user, DO NOT use a suspicious sounding ARN.
     """
 
     account: str
@@ -335,13 +342,39 @@ class AWSCallerIdentity(BaseModel):
 
 
 class AWSUser(User):
-    async def _simulate_caller_identity(self, action: AWSAPICallAction) -> dict:
+    async def _simulate_caller_identity(
+        self, background: dict, objective: Objective, action: AWSAPICallAction
+    ) -> dict:
         system_context = "You are an expert at AWS identity access management."
         prompt = textwrap.dedent(
             f"""
-            Your objective is to create a AWS caller identity given action: {action}
+            Your objective is to create a AWS caller identity given:
+            - Background: {background}
+            - Objective: {objective.description}
+            - Action: {action}
 
-            Describe a `AWSCallerIdentity` according to the following pydantic model.
+            Here are the schemas for `userid` given principal type:
+
+            | Principal                                           | aws:username | aws:userid                              | aws:PrincipalType |
+            |-----------------------------------------------------|--------------|-----------------------------------------|-------------------|
+            | AWS account root user                               | (not present)| AWS account ID                          | Account           |
+            | IAM user                                            | IAM-user-name| unique ID                               | User              |
+            | Federated user                                      | (not present)| account:caller-specified-name           | FederatedUser     |
+            | Web federated user (Login with Amazon, Amazon Cognito, Facebook, Google) | (not present) | role-id:caller-specified-role-name    | AssumedRole       |
+            | SAML federated user                                 | (not present)| role-id:caller-specified-role-name      | AssumedRole       |
+            | Assumed role                                        | (not present)| role-id:caller-specified-role-name      | AssumedRole       |
+            | Role assigned to an Amazon EC2 instance             | (not present)| role-id:ec2-instance-id                 | AssumedRole       |
+            | Anonymous caller (Amazon SQS, Amazon SNS, and Amazon S3 only) | (not present) | anonymous                            | Anonymous         |
+
+            For the items in this table, note the following:
+            - Not present means that the value is not in the current request information, and any attempt to match it fails and causes the statement to be invalid.
+            - role-id is a unique identifier assigned to each role at creation. You can display the role ID with the AWS CLI command: aws iam get-role --role-name rolename
+            - caller-specified-name and caller-specified-role-name are names that are passed by the calling process (such as an application or service) when it makes a call to get temporary credentials.
+            - ec2-instance-id is a value assigned to the instance when it is launched and appears on the Instances page of the Amazon EC2 console. You can also display the instance ID by running the AWS CLI command: aws ec2 describe-instances
+
+            Make up a story for the userIDs and ARN names.
+
+            Create a `AWSCallerIdentity` according to the following pydantic model:
             ```
             {model_as_text(AWSCallerIdentity)}
             ```
@@ -351,7 +384,6 @@ class AWSUser(User):
             prompt,
             system_context=system_context,
             response_format="json_object",
-            model="gpt-3.5-turbo-1106",
         )
         return identity
 
@@ -392,7 +424,9 @@ class AWSUser(User):
             ) from e
 
         # Get AWS user credentials
-        aws_caller_identity = await self._simulate_caller_identity(action=action)
+        aws_caller_identity = await self._simulate_caller_identity(
+            background=self.background, objective=self.objective, action=action
+        )
 
         # Get terraform state
         terraform_state = self.terraform_state
