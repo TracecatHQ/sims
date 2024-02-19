@@ -39,11 +39,11 @@ from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.infrastructure import show_terraform_state
-from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
 from tracecat.llm import async_openai_call
 from tracecat.logger import ThoughtLog, composite_logger, standard_logger
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
+AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -274,16 +274,6 @@ class User(ABC):
                     )
                     self.thoughts_logger.info(audit_log)
             self.objectives.append(f"{objective.name}: {objective.description}")
-
-
-def load_aws_cloudtrail_samples() -> list[dict]:
-    dir_path = path_to_pkg() / "tracecat/log_samples/aws_cloudtrail"
-    json_paths = dir_path.glob("*.json")
-    log_samples = []
-    for path in json_paths:
-        with open(path, "r", encoding="utf-8") as f:
-            log_samples.append(json.load(f))
-    return log_samples
 
 
 def load_aws_cloudtrail_docs() -> list[dict]:
