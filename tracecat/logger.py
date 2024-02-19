@@ -3,22 +3,21 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Literal
-from uuid import UUID, uuid4
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 LOG_FORMAT = (
     "%(asctime)s - [%(levelname)s] - %(name)s::%(funcName)s(%(lineno)d) - %(message)s"
 )
 
 
-class ActionLog(BaseModel):
-    uid: str = Field(default_factory=lambda: str(uuid4()))
-    title: str
-    user: str
-    action: str
-    description: str | None = None
+class ThoughtLog(BaseModel):
+    uuid: str
+    user_name: str
+    thought: dict[str, Any]
+    _tag: Literal["background", "objective", "log"]
+    _is_compromised: bool
 
 
 class JsonFormatter(logging.Formatter):

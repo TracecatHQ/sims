@@ -1,10 +1,9 @@
-import json
 import subprocess
 import textwrap
 
 from tracecat.agents import AWSAPICallAction, AWSUser, Objective, Task, model_as_text
 from tracecat.config import STRATUS__HOME_DIR
-from tracecat.llm import async_openai_call, openai_call
+from tracecat.llm import async_openai_call
 
 
 class MaliciousStratusUser(AWSUser):
@@ -23,13 +22,12 @@ class MaliciousStratusUser(AWSUser):
             name=name,
             terraform_path=terraform_path,
             is_compromised=True,
-            background=self.get_background(technique_id=technique_id),
             max_tasks=max_tasks,
             max_actions=max_actions,
         )
 
-    @staticmethod
-    def get_background(technique_id: str) -> str:
+    async def _get_background(self) -> str:
+        technique_id = self.technique_id
         stratus_show_output = subprocess.run(
             ["stratus", "show", technique_id], capture_output=True, text=True
         )
@@ -44,16 +42,16 @@ class MaliciousStratusUser(AWSUser):
             "\nThe motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist."
             "Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description."
         )
-        result = openai_call(
+        background = await async_openai_call(
             prompt,
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="text",
             model="gpt-3.5-turbo-1106",
         )
-        return result
+        return background
 
-    async def get_objective(self) -> Objective:
+    async def _get_objective(self) -> dict:
         system_context = (
             "You are an expert in predicting what a motivated cyber threat actor might do."
             "You are also an expert at breaking down objectives into smaller tasks."
@@ -93,23 +91,4 @@ class MaliciousStratusUser(AWSUser):
             system_context=system_context,
             response_format="json_object",
         )
-
-        if "Objectives" in objective.keys():
-            objective = objective["Objectives"]
-
-        elif "objectives" in objective.keys():
-            objective = objective["objectives"]
-
-        if "Objective" in objective.keys():
-            objective = objective["Objective"]
-
-        elif "objective" in objective.keys():
-            objective = objective["objective"]
-
-        self.logger.info("🚀 New objective:\n%s\n", json.dumps(objective, indent=2))
-        obj = Objective(
-            name=objective["name"],
-            description=objective["description"],
-            tasks=objective["tasks"],
-        )
-        return obj
+        return objective

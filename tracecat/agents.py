@@ -27,32 +27,23 @@ Simpler kflow (less api calls):
 """
 from __future__ import annotations
 
-import asyncio
 import inspect
 import json
-import random
 import textwrap
 from abc import ABC, abstractmethod
-from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, TypeVar
 
-import orjson
 from pydantic import BaseModel
 
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.infrastructure import show_terraform_state
 from tracecat.ingestion.aws_cloudtrail import AWS_CLOUDTRAIL__EVENT_TIME_FORMAT
 from tracecat.llm import async_openai_call
-from tracecat.logger import ActionLog, composite_logger, file_logger
+from tracecat.logger import ThoughtLog, composite_logger, standard_logger
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
-TRACECAT__LAB__DEBUG_LOGS_PATH = TRACECAT__LAB_DIR / "debug.log"
-TRACECAT__LAB__ACTIONS_LOGS_PATH = TRACECAT__LAB_DIR / "actions.log"
-
-TRACECAT__LAB__DEBUG_LOGS_PATH.touch()
-TRACECAT__LAB__ACTIONS_LOGS_PATH.touch()
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -136,37 +127,35 @@ class Objective(BaseModel):
 class User(ABC):
     def __init__(
         self,
+        uuid: str,
         name: str,
         terraform_path: Path,
         is_compromised: bool,
         policy: dict[str, Any] | None = None,
-        background: str | None = None,
         terraform_script_path: Path | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
     ):
+        self.uuid = uuid
         self.name = name
         self.terraform_path = terraform_path
-        self.terraform_script_path = (
-            terraform_script_path  # Backup in case Terraform state is not available
-        )
+        # Backup in case Terraform state is not available
+        self.terraform_script_path = terraform_script_path
         self.is_compromised = is_compromised
         self.policy = policy
-        self.background = background
         self.max_tasks = max_tasks or 10
         self.max_actions = max_actions or 10
-        self.tasks = deque()
         self.objectives: list[str] = []
+        self.background = None  # Only set at .run
         # For lab diagnostics
-        self.logger = composite_logger(
-            f"diagnostics__{self.name}",
-            file_path=TRACECAT__LAB__DEBUG_LOGS_PATH,
-            log_format="log",
-        )
-        # For actions
-        self.action_logger = file_logger(
-            f"actions__{self.name}",
-            file_path=TRACECAT__LAB__ACTIONS_LOGS_PATH,
+        self.logger = standard_logger(self.uuid, level="INFO", log_format="log")
+        # For thoughts
+        logs_file_path = (
+            TRACECAT__LAB_DIR / "thoughts" / self.uuid / self.name
+        ).suffix(".ndjson")
+        self.thoughts_logger = composite_logger(
+            f"{self.uuid}__{self.name}__thoughts",
+            file_path=logs_file_path,
             log_format="json",
         )
 
@@ -184,66 +173,88 @@ class User(ABC):
         return state
 
     @abstractmethod
-    async def get_objective(self) -> Objective:
+    async def _get_background(self) -> str:
         pass
 
-    async def perform_task(self, task: Task):
-        for action in task.actions:
-            try:
-                await self.perform_action(action)
-            except Exception as e:
-                self.logger.warning(
-                    "⚠️ Error performing action: %s. Skipping...", action, exc_info=e
-                )
+    @abstractmethod
+    async def _get_objective(self) -> str:
+        pass
+
+    async def get_background(self) -> str:
+        background = await self._get_background()
+        self.background = background
+        return background
+
+    async def get_objective(self) -> Objective:
+        objective = await self._get_objective()
+        if "Objectives" in objective.keys():
+            objective = objective["Objectives"]
+
+        elif "objectives" in objective.keys():
+            objective = objective["objectives"]
+
+        if "Objective" in objective.keys():
+            objective = objective["Objective"]
+
+        elif "objective" in objective.keys():
+            objective = objective["objective"]
+
+        objective = Objective(
+            name=objective["name"],
+            description=objective["description"],
+            tasks=objective["tasks"],
+        )
+        return objective
 
     @abstractmethod
     async def _make_api_call(self, action: AWSAPICallAction) -> list[dict]:
         pass
 
-    async def _perform_action(self, action: AWSAPICallAction) -> list[dict]:
-        """Perform action and return list of API logs."""
-        # Make call
-        logs = await self._make_api_call(action=action)
-        # Write calls
-        await self._write_api_logs(logs)
-
     async def perform_action(self, action: AWSAPICallAction):
-        # Add random noise to action.duration
-        action.duration = min(action.duration, 3)
-
-        offset = int(0.3 * action.duration)
-        action.duration += random.randint(-offset, offset)
-        duration = action.duration
-        start_delay = random.random() * duration
-        await asyncio.sleep(start_delay)
-
-        # Do action AKA API call
-        if action.name is None:
-            title = "No API call made"
-            action_name = "None"
-        else:
-            title = f"Performed API call {action.name}"
-            action_name = action.name
-            await self._perform_action(action)
-
-        # Log action
-        log = ActionLog(
-            title=title,
-            user=self.name,
-            action=action_name,
-            description=action.description,
-        )
-        self.action_logger.info(log)
-
-        # End delay
-        await asyncio.sleep(duration - start_delay)
+        try:
+            logs = await self._make_api_call(action=action)
+        except Exception as e:
+            self.logger.warning(
+                "⚠️ Error performing action: %s. Skipping...", action, exc_info=e
+            )
+        return logs
 
     async def run(self):
         """Run the user's script on the event loop."""
+        background = await self.get_background()
+        # Log background
+        background_log = ThoughtLog(
+            uuid=self.uuid,
+            user_name=self.name,
+            thought=background,
+            _tag="background",
+            _is_compromised=self.is_compromised,
+        )
+        self.thoughts_logger.info(background_log)
         while True:
             objective = await self.get_objective()
+            # Log Objective, Tasks, and Actions
+            objective_log = ThoughtLog(
+                uuid=self.uuid,
+                user_name=self.name,
+                thought=objective.model_dump(),
+                _tag="background",
+                _is_compromised=self.is_compromised,
+            )
+            self.thoughts_logger.info(objective_log)
             for task in objective.tasks:
-                await self.perform_task(task)
+                for action in task.actions:
+                    audit_logs = await self.perform_action(action=action)
+                for audit_log in audit_logs:
+                    # Log audit trail
+                    audit_log = ThoughtLog(
+                        uuid=self.uuid,
+                        user_name=self.name,
+                        thought=audit_log,
+                        _tag="log",
+                        _is_compromised=self._is_compromised,
+                    )
+                    self.thoughts_logger.info(audit_log)
             self.objectives.append(f"{objective.name}: {objective.description}")
 
 
@@ -266,8 +277,8 @@ def load_aws_cloudtrail_docs() -> list[dict]:
 class AWSAPIServiceMethod(BaseModel):
     """Python Boto3 Service and Method
 
-    Params
-    ------
+    Parameters
+    ----------
     aws_service: str
         The AWS service to call. For s3:ListBuckets, this would be "s3".
     aws_method: str
@@ -275,30 +286,66 @@ class AWSAPIServiceMethod(BaseModel):
     user_agent: str
         The user agent used to call the AWS API.
         Can choose from `Boto3`, `aws-cli`, or a browser.
+    iam_identity: Literal["user", "role"]
+        The IAM identity that will call the AWS service.
+        An IAM identity can represent a human and non-human identity.
+    iam_role_usage: str | None
+        If `iam_identity` is 'role', this represents the use-case
+        for using IAM roles with temporary policies.
     """
 
     aws_service: str
     aws_method: str
     user_agent: Literal["Boto3", "aws-cli", "Mozilla", "Chrome", "Safari"]
+    iam_identity: Literal["user", "role"]
+    iam_role_usage: Literal[
+        "federated_user_access",
+        "temporary_iam_user_permissions",
+        "cross_account_access",
+        "cross_service_access__principal_permissions",
+        "cross_service_access__service_role",
+        "cross_service_access__service_linked_role",
+    ]
+
+
+class AWSCallerIdentity(BaseModel):
+    """Represents the identity of the AWS caller.
+
+    Parameters
+    ----------
+    account: str
+        The AWS account ID number of the account that owns or contains the calling entity.
+    user_id: str
+        The unique identifier of the calling entity. The exact value depends on the form of the call.
+    arn: str
+        The AWS ARN associated with the calling entity. This can be the ARN of an AWS user, role, or assumed role.
+    """
+
+    account: str
+    user_id: str
+    arn: str
 
 
 class AWSUser(User):
-    def _simulate_caller_identity(self):
-        pass
+    async def _simulate_caller_identity(self, action: AWSAPICallAction) -> dict:
+        system_context = "You are an expert at AWS identity access management."
+        prompt = textwrap.dedent(
+            f"""
+            Your objective is to create a AWS caller identity given action: {action}
 
-    async def _write_api_logs(self, logs: list[dict]):
-        # Write logs to ndjson
-        dir_path = TRACECAT__LAB_DIR / "aws_cloudtrail"
-        dir_path.mkdir(parents=True, exist_ok=True)
-        if self.is_compromised:
-            logs_path = dir_path / "compromised.ndjson"
-        else:
-            logs_path = dir_path / "normal.ndjson"
-        # Write to disk
-        logs_path.touch()
-        for log in logs:
-            with logs_path.open("ab") as f:
-                f.write(orjson.dumps(log) + b"\n")
+            Describe a `AWSCallerIdentity` according to the following pydantic model.
+            ```
+            {model_as_text(AWSCallerIdentity)}
+            ```
+            """
+        )
+        identity = await async_openai_call(
+            prompt,
+            system_context=system_context,
+            response_format="json_object",
+            model="gpt-3.5-turbo-1106",
+        )
+        return identity
 
     async def _make_api_call(self, action: AWSAPICallAction) -> list[dict]:
         """Make AWS API call."""
@@ -337,7 +384,7 @@ class AWSUser(User):
             ) from e
 
         # Get AWS user credentials
-        aws_caller_identity = self._simulate_caller_identity()
+        aws_caller_identity = self._simulate_caller_identity(action=action)
 
         # Get terraform state
         terraform_state = self.terraform_state
