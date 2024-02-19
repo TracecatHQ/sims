@@ -12,8 +12,6 @@ TRACECAT__HOME_DIR = (
     Path(os.environ.get("TRACECAT__HOME_DIR", "~/.tracecat")).expanduser().resolve()
 )
 TRACECAT__LAB_DIR = TRACECAT__HOME_DIR / "lab"
-TRACECAT__LOGS_DIR = TRACECAT__HOME_DIR / "logs"  # Nice clean normalized logs
-TRACECAT__LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def path_to_pkg() -> Path:
