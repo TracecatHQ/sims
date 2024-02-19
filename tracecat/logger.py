@@ -13,8 +13,8 @@ LOG_FORMAT = (
 
 
 class ThoughtLog(BaseModel):
-    _tag: Literal["background", "objective", "log"]
-    _is_compromised: bool
+    tag: Literal["background", "objective", "log"]
+    is_compromised: bool
     uuid: str
     user_name: str
     thought: dict[str, Any]

@@ -246,8 +246,8 @@ class User(ABC):
             uuid=self.uuid,
             user_name=self.name,
             thought=background,
-            _tag="background",
-            _is_compromised=self.is_compromised,
+            tag="background",
+            is_compromised=self.is_compromised,
         )
         self.thoughts_logger.info(background_log)
         while True:
@@ -258,8 +258,8 @@ class User(ABC):
                 uuid=self.uuid,
                 user_name=self.name,
                 thought=objective.model_dump(),
-                _tag="background",
-                _is_compromised=self.is_compromised,
+                tag="background",
+                is_compromised=self.is_compromised,
             )
             self.thoughts_logger.info(objective_log)
             for task in objective.tasks:
@@ -271,8 +271,8 @@ class User(ABC):
                         uuid=self.uuid,
                         user_name=self.name,
                         thought=audit_log,
-                        _tag="log",
-                        _is_compromised=self.is_compromised,
+                        tag="log",
+                        is_compromised=self.is_compromised,
                     )
                     self.thoughts_logger.info(audit_log)
             self.objectives.append(f"{objective.name}: {objective.description}")
