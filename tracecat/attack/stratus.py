@@ -98,7 +98,7 @@ async def simulate_stratus(
 
 
 async def ddos(
-    scenario_id: str,
+    technique_ids: list[str],
     uuid: str,
     user_name: str | None = None,
     timeout: int | None = None,
@@ -109,14 +109,9 @@ async def ddos(
     timeout = timeout or 300
 
     # Run simulation
-    try:
-        technique_ids = AWS_ATTACK_SCENARIOS[scenario_id]
-        kill_chain_length = len(technique_ids)
-    except KeyError as err:
-        raise KeyError(f"Scenario {scenario_id!r} not recognized") from err
-
+    kill_chain_length = len(technique_ids)
     for i, technique_id in enumerate(technique_ids):
-        technique_desc = f"☢️ Execute campaign [{scenario_id} | Technique {i + 1} of {kill_chain_length} | {technique_id} | %s]"
+        technique_desc = f"☢️ Execute campaign [Technique {i + 1} of {kill_chain_length} | {technique_id} | %s]"
         # Execute attack
         try:
             logger.info(technique_desc, "🎲 Run simulation")
