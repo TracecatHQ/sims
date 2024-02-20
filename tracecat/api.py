@@ -2,36 +2,56 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import ssl
 from pathlib import Path
 
-import polars as pl
-from dotenv import find_dotenv, load_dotenv
+import modal
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from sse_starlette.sse import EventSourceResponse
-
-from tracecat.agents import get_path_to_user_logs
-from tracecat.attack.stratus import ddos
-from tracecat.config import path_to_pkg
-from tracecat.logger import standard_logger, tail_file
-
-load_dotenv(find_dotenv())
-logger = standard_logger(__name__)
-
 
 TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
 BG_TASKS: dict[str, asyncio.Task] = {}
 
 app = FastAPI(debug=True, default_response_class=ORJSONResponse)
 
-origins = [
-    "http://localhost",
-    "http://localhost:8080",
-    "http://localhost:3000",
-    "http://localhost:3001",
-]
+
+stub = modal.Stub()
+
+image = (
+    modal.Image.debian_slim(python_version="3.11.7")
+    .pip_install_from_pyproject(
+        "./pyproject.toml",
+    )
+    .copy_local_dir("./tracecat", "/tracecat")
+    .copy_local_file("./pyproject.toml")
+    .copy_local_file("./README.md")
+    .run_commands("pip install .")
+)
+with image.imports():
+    import polars as pl
+    from sse_starlette.sse import EventSourceResponse
+
+    from tracecat.agents import get_path_to_user_logs
+    from tracecat.attack.stratus import ddos
+    from tracecat.config import path_to_pkg
+    from tracecat.logger import standard_logger, tail_file
+
+    logger = standard_logger(__name__)
+
+if os.environ.get("TRACECAT__DEV"):
+    origins = [
+        "http://localhost",
+        "http://localhost:8080",
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ]
+else:
+    origins = [
+        "https://tracecat-simulation-demo-ici1kqv61-daryls-projects.vercel.app",
+        "https://simulation.tracecat.com",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,7 +119,7 @@ async def tail_file_handler(uuid: str, queue: asyncio.Queue):
         return
 
 
-@app.get("/feed/logs/{uuid}", response_class=EventSourceResponse)
+@app.get("/feed/logs/{uuid}")
 async def stream_agent_logs(uuid: str):
     queue = TRACECAT__LOG_QUEUES.get("uuid", asyncio.Queue())
     asyncio.create_task(tail_file_handler(uuid=uuid, queue=queue))
@@ -140,3 +160,14 @@ def get_primitives_catalog():
     path = path_to_pkg() / "tracecat" / "catalog" / "primitives.parquet"
     df = pl.read_parquet(path)
     return {"primitives": df.to_dicts()}
+
+
+@stub.function(
+    image=image,
+    secrets=[modal.Secret.from_name("tracecat-openai-secret")],
+    concurrency_limit=1,
+    allow_concurrent_inputs=10,
+)
+@modal.asgi_app()
+def fastapi_app():
+    return app
