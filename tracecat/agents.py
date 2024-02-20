@@ -205,6 +205,7 @@ class User(ABC):
         pass
 
     async def get_background(self) -> str:
+        self.logger.info("🔍 Getting user background...")
         background = await self._get_background()
         self.background = background
         return background
@@ -248,6 +249,7 @@ class User(ABC):
 
     async def run(self):
         """Run the user's script on the event loop."""
+        self.logger.info("🚀 Starting user script...")
         try:
             background = await self.get_background()
             # Log background

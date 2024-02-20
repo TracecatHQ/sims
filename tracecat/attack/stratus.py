@@ -94,6 +94,7 @@ async def simulate_stratus(
 
     tasks: list[AWSUser] = [user, denotator]
     try:
+        logger.info(f"🚀 Launching job {uuid} with {technique_id}")
         await asyncio.gather(
             *[asyncio.wait_for(task.run(), timeout=timeout) for task in tasks]
         )

@@ -1,5 +1,6 @@
-import subprocess
 import textwrap
+
+import httpx
 
 from tracecat.agents import (
     AWSAPICallAction,
@@ -37,10 +38,10 @@ class NoisyStratusUser(AWSUser):
 
     async def _get_background(self) -> str:
         technique_id = self.technique_id
-        stratus_show_output = subprocess.run(
-            ["stratus", "show", technique_id], capture_output=True, text=True
-        )
-        attack_description = stratus_show_output.stdout
+        url = f"https://raw.githubusercontent.com/DataDog/stratus-red-team/main/docs/attack-techniques/AWS/{technique_id}.md"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            attack_description = response.text
         system_context = (
             "You are an expert in reverse engineering Cloud cyber attacks."
             "You are an expert in Cloud activities that produce false positives in a SIEM."
@@ -58,12 +59,15 @@ class NoisyStratusUser(AWSUser):
             """
         )
 
+        self.logger.info("🧠 Before calling openai for %s...", self.name)
         background = await async_openai_call(
             prompt,
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="json_object",
         )
+
+        self.logger.info("🧠 After calling openai for %s...", self.name)
         return background
 
     async def _get_objective(self) -> dict:
