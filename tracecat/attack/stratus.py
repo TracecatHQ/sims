@@ -4,7 +4,9 @@ This is a pentesting tool that assumes full visibility into your AWS inventory.
 """
 
 import asyncio
+import ssl
 
+from tracecat.agents import AWSUser
 from tracecat.attack.attacker import MaliciousStratusUser
 from tracecat.attack.noise import NoisyStratusUser
 from tracecat.logger import standard_logger
@@ -90,11 +92,16 @@ async def simulate_stratus(
         max_actions=5,
     )
 
-    tasks = [user, denotator]
-    await asyncio.wait_for(
-        asyncio.gather(*[task.run() for task in tasks]),
-        timeout=timeout,
-    )
+    tasks: list[AWSUser] = [user, denotator]
+    try:
+        await asyncio.gather(
+            *[asyncio.wait_for(task.run(), timeout=timeout) for task in tasks]
+        )
+    except asyncio.TimeoutError:
+        logger.info(f"✅ Timed out job {uuid} with {technique_id}")
+    except (asyncio.CancelledError, ssl.SSLError) as e:
+        logger.info(f"✅ Stopped job {uuid} with {technique_id}")
+        raise e
 
 
 async def ddos(
@@ -110,18 +117,23 @@ async def ddos(
 
     # Run simulation
     kill_chain_length = len(technique_ids)
-    for i, technique_id in enumerate(technique_ids):
-        technique_desc = f"☢️ Execute campaign [Technique {i + 1} of {kill_chain_length} | {technique_id} | %s]"
-        # Execute attack
-        try:
-            logger.info(technique_desc, "🎲 Run simulation")
-            await simulate_stratus(
-                technique_id=technique_id,
-                uuid=uuid,
-                user_name=user_name,
-                max_tasks=max_tasks,
-                max_actions=max_actions,
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            logger.info(technique_desc, "✅ Timed out successfully")
+    try:
+        for i, technique_id in enumerate(technique_ids):
+            technique_desc = f"☢️ Execute campaign [Technique {i + 1} of {kill_chain_length} | {technique_id} | %s]"
+            # Execute attack
+            try:
+                logger.info(technique_desc, "🎲 Run simulation")
+                await simulate_stratus(
+                    technique_id=technique_id,
+                    uuid=uuid,
+                    user_name=user_name,
+                    max_tasks=max_tasks,
+                    max_actions=max_actions,
+                    timeout=timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.info(technique_desc, "✅ Timed out successfully")
+            except (asyncio.CancelledError, ssl.SSLError) as e:
+                raise e
+    except (asyncio.CancelledError, ssl.SSLError):
+        logger.info(f"✅ Successfully cancelled job {uuid}")

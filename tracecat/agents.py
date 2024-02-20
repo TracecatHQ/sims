@@ -27,13 +27,16 @@ Simpler kflow (less api calls):
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
+import ssl
 import textwrap
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, TypeVar
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -169,11 +172,13 @@ class User(ABC):
         self.background = None  # Only set at .run
         self.objective = None  # Latest objective
         # For lab diagnostics
+        self._user_uuid = str(uuid4())
         self.logger = standard_logger(self.uuid, level="INFO", log_format="log")
         # For thoughts
         logs_file_path = get_path_to_user_logs(uuid=self.uuid)
+
         self.thoughts_logger = composite_logger(
-            f"{self.uuid}__{self.name}__thoughts",
+            f"{self.uuid}__{self.name}__thoughts__{self._user_uuid}",
             file_path=logs_file_path,
             log_format="json",
         )
@@ -232,6 +237,9 @@ class User(ABC):
     async def perform_action(self, action: AWSAPICallAction):
         try:
             logs = await self._make_api_call(action=action)
+        except (asyncio.CancelledError, ssl.SSLError) as e:
+            self.logger.info("🛑 User action cancelled.")
+            raise e
         except Exception as e:
             self.logger.warning(
                 "⚠️ Error performing action: %s. Skipping...", action, exc_info=e
@@ -240,42 +248,45 @@ class User(ABC):
 
     async def run(self):
         """Run the user's script on the event loop."""
-        background = await self.get_background()
-        # Log background
-        background_log = ThoughtLog(
-            uuid=self.uuid,
-            user_name=self.name,
-            thought=background,
-            tag="background",
-            is_compromised=self.is_compromised,
-        )
-        self.thoughts_logger.info(background_log)
-        while True:
-            objective = await self.get_objective()
-            self.objective = objective
-            # Log Objective, Tasks, and Actions
-            objective_log = ThoughtLog(
+        try:
+            background = await self.get_background()
+            # Log background
+            background_log = ThoughtLog(
                 uuid=self.uuid,
                 user_name=self.name,
-                thought=objective.model_dump(),
-                tag="objective",
+                thought=background,
+                tag="background",
                 is_compromised=self.is_compromised,
             )
-            self.thoughts_logger.info(objective_log)
-            for task in objective.tasks:
-                for action in task.actions:
-                    audit_logs = await self.perform_action(action=action)
-                for audit_log in audit_logs:
-                    # Log audit trail
-                    audit_log = ThoughtLog(
-                        uuid=self.uuid,
-                        user_name=self.name,
-                        thought=audit_log,
-                        tag="log",
-                        is_compromised=self.is_compromised,
-                    )
-                    self.thoughts_logger.info(audit_log)
-            self.objectives.append(f"{objective.name}: {objective.description}")
+            self.thoughts_logger.info(background_log)
+            while True:
+                objective = await self.get_objective()
+                self.objective = objective
+                # Log Objective, Tasks, and Actions
+                objective_log = ThoughtLog(
+                    uuid=self.uuid,
+                    user_name=self.name,
+                    thought=objective.model_dump(),
+                    tag="objective",
+                    is_compromised=self.is_compromised,
+                )
+                self.thoughts_logger.info(objective_log)
+                for task in objective.tasks:
+                    for action in task.actions:
+                        audit_logs = await self.perform_action(action=action)
+                        for audit_log in audit_logs:
+                            # Log audit trail
+                            audit_log = ThoughtLog(
+                                uuid=self.uuid,
+                                user_name=self.name,
+                                thought=audit_log,
+                                tag="log",
+                                is_compromised=self.is_compromised,
+                            )
+                            self.thoughts_logger.info(audit_log)
+                self.objectives.append(f"{objective.name}: {objective.description}")
+        except (asyncio.CancelledError, ssl.SSLError):
+            self.logger.info("🛑 User script cancelled.")
 
 
 def load_aws_cloudtrail_docs() -> list[dict]:
