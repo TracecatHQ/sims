@@ -23,26 +23,19 @@ dynamic = [
   "version",
 ]
 dependencies = [
-  "beautifulsoup4",
-  "connectorx",
   "cryptography",
-  "docker",
   "fastapi",
-  "huggingface",
-  "lancedb",
   "markdown",
   "openai",
   "orjson",
   "polars",
   "pyarrow",
-  "pydantic",
+  "pydantic==2.6.1",
   "python-dotenv",
   "python-multipart",
   "regex",
-  "sqlmodel",
   "sse_starlette",
   "tenacity",
-  "typer",
   "uvicorn",
 ]
 [project.optional-dependencies]
