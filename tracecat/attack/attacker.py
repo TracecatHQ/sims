@@ -60,7 +60,6 @@ class MaliciousStratusUser(AWSUser):
             temperature=1,  # High temperature for creativity and variation
             system_context=system_context,
             response_format="json_object",
-            model="gpt-3.5-turbo-1106",
         )
         return background
 

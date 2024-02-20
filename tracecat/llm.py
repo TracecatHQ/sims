@@ -16,7 +16,12 @@ logger = standard_logger(__name__)
 
 client = OpenAI()
 
-MODEL_T = Literal["gpt-4-0125-preview", "gpt-4-vision-preview", "gpt-3.5-turbo-1106"]
+MODEL_T = Literal[
+    "gpt-4-turbo-preview",
+    "gpt-4-0125-preview",
+    "gpt-4-vision-preview",
+    "gpt-3.5-turbo-1106",
+]
 MAX_RETRIES = 3
 DEFAULT_SYSTEM_CONTEXT = "You are an expert threat intelligence researcher, detection and response engineer, and threat hunter."
 
@@ -27,7 +32,7 @@ DEFAULT_SYSTEM_CONTEXT = "You are an expert threat intelligence researcher, dete
 )
 def openai_call(
     prompt: str,
-    model: MODEL_T = "gpt-4-0125-preview",
+    model: MODEL_T = "gpt-4-turbo-preview",
     temperature: float = 0.2,
     system_context: str = DEFAULT_SYSTEM_CONTEXT,
     response_format: Literal["json_object", "text"] = "text",
@@ -77,7 +82,7 @@ async_client = AsyncOpenAI()
 )
 async def async_openai_call(
     prompt: str,
-    model: MODEL_T = "gpt-4-0125-preview",
+    model: MODEL_T = "gpt-4-turbo-preview",
     temperature: float = 0.2,
     system_context: str = DEFAULT_SYSTEM_CONTEXT,
     response_format: Literal["json_object", "text"] = "text",
