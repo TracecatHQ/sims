@@ -22,6 +22,7 @@ class NoisyStratusUser(AWSUser):
         uuid: str,
         name: str,
         technique_id: str,
+        scenario_id: str,
         max_tasks: int | None = None,
         max_actions: int | None = None,
     ):
@@ -30,6 +31,7 @@ class NoisyStratusUser(AWSUser):
         super().__init__(
             uuid=uuid,
             name=name,
+            scenario_id=scenario_id,
             terraform_path=terraform_path,
             is_compromised=False,
             max_tasks=max_tasks,
@@ -71,6 +73,7 @@ class NoisyStratusUser(AWSUser):
         return background
 
     async def _get_objective(self) -> dict:
+        permissions = self._get_iam()
         system_context = textwrap.dedent(
             "You are an expert in predicting what users in an organization might do."
             "You are also an expert at breaking down objectives into smaller tasks."
@@ -89,16 +92,17 @@ class NoisyStratusUser(AWSUser):
             ```
             Return a single structured JSON response.
 
-            Intent: Predict what a user with the following background might realistically do:
+            Intent: Predict what a user with the following background and IAM permissions might realistically do:
             ```
             Background:
             {self.background}
 
+            IAM permissions:
+            {permissions}
+
             The user has completed the following objectives:
             {self.objectives!s}
             ```
-
-            Contraints:
             - Include at least one AWS API call explicitly mentioned in the "Background".
             - Each objective should have no more than {self.max_tasks} tasks.
             - Each task should have no more than {self.max_actions} actions.

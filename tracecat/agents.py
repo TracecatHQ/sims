@@ -152,6 +152,7 @@ class User(ABC):
         self,
         uuid: str,
         name: str,
+        scenario_id: str,
         terraform_path: Path,
         is_compromised: bool,
         policy: dict[str, Any] | None = None,
@@ -161,6 +162,7 @@ class User(ABC):
     ):
         self.uuid = uuid
         self.name = name
+        self.scenario_id = scenario_id
         self.terraform_path = terraform_path
         # Backup in case Terraform state is not available
         self.terraform_script_path = terraform_script_path
@@ -355,25 +357,28 @@ class AWSCallerIdentity(BaseModel):
 
 
 class AWSUser(User):
+    def _get_iam(self):
+        with (path_to_pkg() / "scenarios" / self.scenario_id).suffix(".tf").open() as f:
+            iam = f.read()
+        return iam
+
     async def _simulate_caller_identity(
         self,
         background: dict,
         objective: Objective,
         action: AWSAPICallAction,
-        scenario_id: str,
+        permissions: str,
     ) -> dict:
         system_context = "You are an expert at AWS identity access management."
-        with (path_to_pkg() / "scenarios" / scenario_id).suffix(".tf").open() as f:
-            iam = f.read()
         prompt = textwrap.dedent(
             f"""
             Your objective is to create a AWS caller identity given:
             - Background: {background}
             - Objective: {objective.description}
             - Action: {action}
-            - AWS IAM:
+            - AWS IAM permissions:
             ```hcl
-            {iam}
+            {permissions}
             ```
 
             You must select an AWS identity defined in the AWS IAM Terraform script.
@@ -428,8 +433,12 @@ class AWSUser(User):
             ) from e
 
         # Get AWS user credentials
+        permissions = self._get_iam()
         aws_caller_identity = await self._simulate_caller_identity(
-            background=self.background, objective=self.objective, action=action
+            background=self.background,
+            objective=self.objective,
+            action=action,
+            permissions=permissions,
         )
 
         # Get temporal scope
@@ -455,7 +464,8 @@ class AWSUser(User):
             AWS Caller Identity: {aws_caller_identity}
             AWS Service: {aws_service}
             AWS Method: {aws_method}
-            User Agent: {user_agent}
+            AWS User Agent: {user_agent}
+            AWS IAM Permissions: {permissions}
             ---
             """
         )

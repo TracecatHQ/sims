@@ -22,6 +22,7 @@ class MaliciousStratusUser(AWSUser):
         uuid: str,
         name: str,
         technique_id: str,
+        scenario_id: str,
         max_tasks: int | None = None,
         max_actions: int | None = None,
     ):
@@ -30,6 +31,7 @@ class MaliciousStratusUser(AWSUser):
         super().__init__(
             uuid=uuid,
             name=name,
+            scenario_id=scenario_id,
             terraform_path=terraform_path,
             is_compromised=True,
             max_tasks=max_tasks,
@@ -74,6 +76,7 @@ class MaliciousStratusUser(AWSUser):
         return background
 
     async def _get_objective(self) -> dict:
+        permissions = self._get_iam()
         system_context = (
             "You are an expert in predicting what a motivated cyber threat actor might do."
             "You are also an expert at breaking down objectives into smaller tasks."
@@ -81,7 +84,7 @@ class MaliciousStratusUser(AWSUser):
         )
         prompt = textwrap.dedent(
             f"""
-            Please describe one `Objective` with its constituent `Tasks` and `Actions` according to the following pydantic schema:
+            Task: Describe one `Objective` with its constituent `Tasks` and `Actions` according to the following pydantic schema:
             ```
             {model_as_text(Objective)}
 
@@ -89,12 +92,15 @@ class MaliciousStratusUser(AWSUser):
 
             {model_as_text(AWSAPICallAction)}
             ```
-            You are to generate a single structured JSON response.
+            Return a a single structured JSON response.
 
-            Your goal in describing the `Objective` is to predict what a malicious user with the following background might realistically do:
+            Intent: Predict what a malicious user with the following backgroun and IAM permissions might realistically do:
             ```
             Background:
             {self.background}
+
+            IAM permissions:
+            {permissions}
 
             The user has completed the following objectives:
             {self.objectives!s}
