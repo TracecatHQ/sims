@@ -48,9 +48,16 @@ class MaliciousStratusUser(AWSUser):
             "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = textwrap.dedent(
-            f"""Your task is to create an attacker motive that aligns with this attack description:\n```{attack_description}```
-            The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
-            Refer to specific advanced persistent threat (APT) actors align with the tactics, techniques, and procecures (TTPs) in the attack description.
+            f"""Task: Create an attacker motive that aligns with this attack description:
+            ```{attack_description}```
+
+            Hints:
+            - The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
+            - Refer to specific advanced persistent threat (APT) actors (e.g. APT1) that align with the tactics, techniques, and procecures (TTPs) in the attack description.
+
+            Must Haves:
+            - Use the same tools and techniques as described in the attack but in a non-malicious way.
+            - Create a non-malicious sounding username for this user
 
             Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}

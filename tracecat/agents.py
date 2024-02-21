@@ -356,16 +356,27 @@ class AWSCallerIdentity(BaseModel):
 
 class AWSUser(User):
     async def _simulate_caller_identity(
-        self, background: dict, objective: Objective, action: AWSAPICallAction
+        self,
+        background: dict,
+        objective: Objective,
+        action: AWSAPICallAction,
+        scenario_id: str,
     ) -> dict:
         system_context = "You are an expert at AWS identity access management."
+        with (path_to_pkg() / "scenarios" / scenario_id).suffix(".tf").open() as f:
+            iam = f.read()
         prompt = textwrap.dedent(
             f"""
             Your objective is to create a AWS caller identity given:
             - Background: {background}
             - Objective: {objective.description}
             - Action: {action}
-            - If you are a malicious user, use a non-malicious AWS identity.
+            - AWS IAM:
+            ```hcl
+            {iam}
+            ```
+
+            You must select an AWS identity defined in the AWS IAM Terraform script.
 
             Create a `AWSCallerIdentity` according to the following pydantic model:
             ```
@@ -421,14 +432,6 @@ class AWSUser(User):
             background=self.background, objective=self.objective, action=action
         )
 
-        # Get terraform state
-        terraform_state = self.terraform_state
-        terraform_state_prompt = ""
-        if isinstance(terraform_state, str):
-            terraform_state_prompt = (
-                f"Terraform state:\n```json\n{terraform_state}\n```"
-            )
-
         # Get temporal scope
         start_ts = datetime.now()
         end_ts = start_ts + timedelta(seconds=action.duration)
@@ -438,8 +441,9 @@ class AWSUser(User):
         # Generate CloudTrail log
         cloudtrail_prompt = textwrap.dedent(
             f"""
-            You objective is to create realistic AWS CloudTrail JSON records with `eventTime` set between {start_ts_text} and {end_ts_text}.
-            Generate log records according to the following nested JSON format:
+            Your objective is to create realistic AWS CloudTrail JSON records with `eventTime` set between {start_ts_text} and {end_ts_text}.
+
+            Task: Generate log records with a realistic `userAgent` according to the following nested JSON format:
             ```json
             {{"Records": list of dicts}}
             ```
@@ -452,12 +456,7 @@ class AWSUser(User):
             AWS Service: {aws_service}
             AWS Method: {aws_method}
             User Agent: {user_agent}
-            {terraform_state_prompt}
             ---
-
-            The JSON record must conform with the AWS CloudTrail JSON schema.
-            Please predict a realistic `userAgent` in the JSON record.
-            If applicable, please include realistic `requestParameters` and `responseElements` in the JSON record.
             """
         )
         self.logger.info(

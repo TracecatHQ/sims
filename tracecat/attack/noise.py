@@ -42,17 +42,17 @@ class NoisyStratusUser(AWSUser):
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             attack_description = response.text
-        system_context = (
+        system_context = textwrap.dedent(
             "You are an expert in reverse engineering Cloud cyber attacks."
             "You are an expert in Cloud activities that produce false positives in a SIEM."
             "You are an expert in spoofing in the Cloud."
-            "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = textwrap.dedent(
-            f"""Your task is to rewrite this attack description:
+            f"""
+            Task: Generate a background for a non-malicious AWS user given the attack description:
             ```{attack_description}```
-            Into a description of a software engineer or DevOps engineer (pick one job title).
-            Use the same tools and techniques as described in the attack but in a non-malicious way.
+
+            Intent: Use the same tools and techniques as described in the attack but in a non-malicious way.
 
             Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}
@@ -71,14 +71,15 @@ class NoisyStratusUser(AWSUser):
         return background
 
     async def _get_objective(self) -> dict:
-        system_context = (
+        system_context = textwrap.dedent(
             "You are an expert in predicting what users in an organization might do."
             "You are also an expert at breaking down objectives into smaller tasks."
             "You are creative and like to think outside the box."
+            "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = textwrap.dedent(
             f"""
-            Please describe one `Objective` with its constituent `Tasks` and `Actions` according to the following pydantic schema:
+            Task: Describe one `Objective` with its constituent `Tasks` and `Actions` according to the following pydantic schema:
             ```
             {model_as_text(Objective)}
 
@@ -86,9 +87,9 @@ class NoisyStratusUser(AWSUser):
 
             {model_as_text(AWSAPICallAction)}
             ```
-            You are to generate a single structured JSON response.
+            Return a single structured JSON response.
 
-            Your goal in describing the `Objective` is to predict what a user with the following background might realistically do:
+            Intent: Predict what a user with the following background might realistically do:
             ```
             Background:
             {self.background}
@@ -97,10 +98,11 @@ class NoisyStratusUser(AWSUser):
             {self.objectives!s}
             ```
 
-            You must select one AWS API call explicitly mentioned in the "Background".
-            Each objective should have no more than {self.max_tasks} tasks.
-            Each task should have no more than {self.max_actions} actions.
-            Please be realistic and detailed.
+            Contraints:
+            - Include at least one AWS API call explicitly mentioned in the "Background".
+            - Each objective should have no more than {self.max_tasks} tasks.
+            - Each task should have no more than {self.max_actions} actions.
+            - Give realistic and detailed answers.
             """
         )
 
