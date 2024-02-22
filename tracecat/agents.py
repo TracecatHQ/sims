@@ -358,6 +358,7 @@ class AWSCallerIdentity(BaseModel):
 
 class AWSUser(User):
     def _get_iam(self):
+        self.logger("🪪 Loading IAM...")
         with (path_to_pkg() / "scenarios" / self.scenario_id).suffix(".tf").open() as f:
             iam = f.read()
         return iam

@@ -68,8 +68,18 @@ AWS_ATTACK_SCENARIOS = {
 }
 
 
+IAM_SCENARIOS = [
+    "codebuild_secrets",
+    "detection_evasion",
+    "ec2_ssrf",
+    "ecs_efs_attack",
+    "iam_prvesec_by_attachment",
+]
+
+
 async def simulate_stratus(
     technique_id: str,
+    scenario_id: str,
     uuid: str,
     user_name: str,
     max_tasks: int,
@@ -80,6 +90,7 @@ async def simulate_stratus(
         uuid=uuid,
         name=user_name,
         technique_id=technique_id,
+        scenario_id=scenario_id,
         max_tasks=max_tasks,
         max_actions=max_actions,
     )
@@ -87,9 +98,10 @@ async def simulate_stratus(
         uuid=uuid,
         name=user_name,
         technique_id=technique_id,
+        scenario_id=scenario_id,
         # Assume very carefully executed attack
-        max_tasks=1,
-        max_actions=5,
+        max_tasks=scenario_id,
+        max_actions=max_actions,
     )
 
     tasks: list[AWSUser] = [user, denotator]
@@ -106,8 +118,9 @@ async def simulate_stratus(
 
 
 async def ddos(
-    technique_ids: list[str],
     uuid: str,
+    technique_ids: list[str] | None = None,
+    scenario_id: str | None = None,
     user_name: str | None = None,
     timeout: int | None = None,
     max_tasks: int | None = None,
@@ -115,6 +128,8 @@ async def ddos(
 ):
     user_name = "tracecat-user"
     timeout = timeout or 300
+    technique_ids = technique_ids or AWS_ATTACK_SCENARIOS["ec2-brute-force"]
+    scenario_id = scenario_id or "codebuild_secrets"
 
     # Run simulation
     kill_chain_length = len(technique_ids)
@@ -126,6 +141,7 @@ async def ddos(
                 logger.info(technique_desc, "🎲 Run simulation")
                 await simulate_stratus(
                     technique_id=technique_id,
+                    scenario_id=scenario_id,
                     uuid=uuid,
                     user_name=user_name,
                     max_tasks=max_tasks,

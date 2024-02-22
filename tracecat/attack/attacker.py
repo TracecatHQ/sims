@@ -40,6 +40,7 @@ class MaliciousStratusUser(AWSUser):
 
     async def _get_background(self) -> dict:
         technique_id = self.technique_id
+        permissions = self._get_iam()
         url = f"https://raw.githubusercontent.com/DataDog/stratus-red-team/main/docs/attack-techniques/AWS/{technique_id}.md"
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
@@ -53,13 +54,15 @@ class MaliciousStratusUser(AWSUser):
             f"""Task: Create an attacker motive that aligns with this attack description:
             ```{attack_description}```
 
+            Also give the attacker a non-malicious sounding username that aligns with the following IAM permissions:
+            ```{permissions}```
+
             Hints:
             - The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
             - Refer to specific advanced persistent threat (APT) actors (e.g. APT1) that align with the tactics, techniques, and procecures (TTPs) in the attack description.
 
             Must Haves:
             - Use the same tools and techniques as described in the attack but in a non-malicious way.
-            - Create a non-malicious sounding username for this user
 
             Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}

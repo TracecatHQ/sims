@@ -40,6 +40,7 @@ class NoisyStratusUser(AWSUser):
 
     async def _get_background(self) -> str:
         technique_id = self.technique_id
+        permissions = self._get_iam()
         url = f"https://raw.githubusercontent.com/DataDog/stratus-red-team/main/docs/attack-techniques/AWS/{technique_id}.md"
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
@@ -53,6 +54,9 @@ class NoisyStratusUser(AWSUser):
             f"""
             Task: Generate a background for a non-malicious AWS user given the attack description:
             ```{attack_description}```
+
+            Also give the AWS user a username that aligns with the following IAM permissions:
+            ```{permissions}```
 
             Intent: Use the same tools and techniques as described in the attack but in a non-malicious way.
 
