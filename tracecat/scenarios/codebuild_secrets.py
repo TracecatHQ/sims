@@ -1,3 +1,4 @@
+tf_script = """
 resource "aws_iam_user" "cg-calrissian" {
   name = "calrissian"
   tags = {
@@ -89,3 +90,4 @@ resource "aws_iam_user_policy_attachment" "cg-solo-attachment" {
   user = "${aws_iam_user.cg-solo.name}"
   policy_arn = "${aws_iam_policy.cg-solo-policy.arn}"
 }
+"""

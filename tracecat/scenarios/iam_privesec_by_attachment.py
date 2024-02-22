@@ -1,4 +1,5 @@
-#IAM Users
+# IAM Users
+tf_script = """
 resource "aws_iam_user" "cg-kerrigan" {
   name = "kerrigan"
   tags = {
@@ -154,3 +155,4 @@ resource "aws_iam_instance_profile" "cg-ec2-meek-instance-profile" {
   name = "cg-ec2-meek-instance-profile-${var.cgid}"
   role="${aws_iam_role.cg-ec2-meek-role.name}"
 }
+"""

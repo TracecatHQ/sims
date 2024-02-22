@@ -131,7 +131,7 @@ async def ddos(
     max_actions: int | None = None,
     enqueue: Callable | None = None,
 ):
-    user_name = "tracecat-user"
+    user_name = uuid
     timeout = timeout or 300
     technique_ids = technique_ids or AWS_ATTACK_SCENARIOS["ec2-brute-force"]
     scenario_id = scenario_id or "codebuild_secrets"

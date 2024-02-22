@@ -44,6 +44,7 @@ from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.infrastructure import show_terraform_state
 from tracecat.llm import async_openai_call
 from tracecat.logger import JsonFormatter, ThoughtLog, composite_logger, standard_logger
+from tracecat.scenarios import SCENARIOS_MAPPING
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -371,10 +372,9 @@ class AWSCallerIdentity(BaseModel):
 
 class AWSUser(User):
     def _get_iam(self):
-        self.logger("🪪 Loading IAM...")
-        with (path_to_pkg() / "scenarios" / self.scenario_id).suffix(".tf").open() as f:
-            iam = f.read()
-        return iam
+        self.logger.info("🪪 Loading IAM...")
+
+        return SCENARIOS_MAPPING[self.scenario_id]
 
     async def _simulate_caller_identity(
         self,

@@ -1,4 +1,5 @@
-#IAM Users and Keys
+# IAM Users and Keys
+tf_script = """
 resource "aws_iam_user" "r_waterhouse" {
   name = "r_waterhouse"
   path = "/"
@@ -247,3 +248,4 @@ resource "aws_iam_role_policy" "instance_profile_hard_path" {
     ]
   })
 }
+"""

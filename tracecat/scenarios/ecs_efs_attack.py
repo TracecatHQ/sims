@@ -1,6 +1,6 @@
-
 ###########  EC2 Roles ###############
 
+tf_script = """
 resource "aws_iam_role" "cg-ec2-ruse-role" {
   name = "cg-ec2-role-${var.cgid}"
   assume_role_policy = jsonencode(
@@ -230,3 +230,4 @@ resource "aws_iam_policy" "cg-ecs-role-policy" {
     Name = "cg-ecs-role-policy-${var.cgid}"
   })
 }
+"""

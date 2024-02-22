@@ -1,4 +1,5 @@
-#IAM Users
+# IAM Users
+tf_script = """
 resource "aws_iam_user" "cg-solus" {
   name = "solus-${var.cgid}"
   tags = {
@@ -106,3 +107,4 @@ resource "aws_iam_user_policy_attachment" "cg-shepard-attachment" {
   user = "${aws_iam_user.cg-shepard.name}"
   policy_arn = "${aws_iam_policy.cg-shepard-policy.arn}"
 }
+"""
