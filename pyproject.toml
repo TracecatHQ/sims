@@ -37,6 +37,7 @@ dependencies = [
   "sse_starlette",
   "tenacity",
   "uvicorn",
+  "websockets",
 ]
 [project.optional-dependencies]
 test = [

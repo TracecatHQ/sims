@@ -1,4 +1,5 @@
 import textwrap
+from typing import Callable
 
 import httpx
 
@@ -25,6 +26,7 @@ class NoisyStratusUser(AWSUser):
         scenario_id: str,
         max_tasks: int | None = None,
         max_actions: int | None = None,
+        enqueue: Callable | None = None,
     ):
         self.technique_id = technique_id
         terraform_path = STRATUS__HOME_DIR / technique_id
@@ -36,6 +38,7 @@ class NoisyStratusUser(AWSUser):
             is_compromised=False,
             max_tasks=max_tasks,
             max_actions=max_actions,
+            enqueue=enqueue,
         )
 
     async def _get_background(self) -> str:

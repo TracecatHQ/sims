@@ -35,7 +35,7 @@ import textwrap
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -43,7 +43,7 @@ from pydantic import BaseModel
 from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
 from tracecat.infrastructure import show_terraform_state
 from tracecat.llm import async_openai_call
-from tracecat.logger import ThoughtLog, composite_logger, standard_logger
+from tracecat.logger import JsonFormatter, ThoughtLog, composite_logger, standard_logger
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -159,6 +159,7 @@ class User(ABC):
         terraform_script_path: Path | None = None,
         max_tasks: int | None = None,
         max_actions: int | None = None,
+        enqueue: Callable | None = None,
     ):
         self.uuid = uuid
         self.name = name
@@ -179,11 +180,15 @@ class User(ABC):
         # For thoughts
         logs_file_path = get_path_to_user_logs(uuid=self.uuid)
 
-        self.thoughts_logger = composite_logger(
-            f"{self.uuid}__{self.name}__thoughts__{self._user_uuid}",
-            file_path=logs_file_path,
-            log_format="json",
-        )
+        self._use_enqueue = enqueue is not None
+        if self._use_enqueue:
+            self.enqueue = enqueue
+        else:
+            self.thoughts_logger = composite_logger(
+                f"{self.uuid}__{self.name}__thoughts__{self._user_uuid}",
+                file_path=logs_file_path,
+                log_format="json",
+            )
 
     @property
     def terraform_state(self) -> str | None:
@@ -205,6 +210,14 @@ class User(ABC):
     @abstractmethod
     async def _get_objective(self) -> str:
         pass
+
+    def log_thought(self, thought_log: ThoughtLog):
+        if self._use_enqueue:
+            log = thought_log.model_dump()
+            log["time"] = datetime.now().strftime(JsonFormatter._date_format)
+            self.enqueue(log)
+        else:
+            self.thoughts_logger.info(thought_log)
 
     async def get_background(self) -> str:
         self.logger.info("🔍 Getting user background...")
@@ -262,7 +275,7 @@ class User(ABC):
                 tag="background",
                 is_compromised=self.is_compromised,
             )
-            self.thoughts_logger.info(background_log)
+            self.log_thought(background_log)
             while True:
                 objective = await self.get_objective()
                 self.objective = objective
@@ -274,7 +287,7 @@ class User(ABC):
                     tag="objective",
                     is_compromised=self.is_compromised,
                 )
-                self.thoughts_logger.info(objective_log)
+                self.log_thought(objective_log)
                 for task in objective.tasks:
                     for action in task.actions:
                         audit_logs = await self.perform_action(action=action)
@@ -287,7 +300,7 @@ class User(ABC):
                                 tag="log",
                                 is_compromised=self.is_compromised,
                             )
-                            self.thoughts_logger.info(audit_log)
+                            self.log_thought(audit_log)
                 self.objectives.append(f"{objective.name}: {objective.description}")
         except (asyncio.CancelledError, ssl.SSLError):
             self.logger.info("🛑 User script cancelled.")

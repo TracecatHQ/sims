@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-import ssl
-from pathlib import Path
 
 import modal
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from pydantic import BaseModel
 
 TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
-BG_TASKS: dict[str, asyncio.Task] = {}
 
 app = FastAPI(debug=True, default_response_class=ORJSONResponse)
 
 
 stub = modal.Stub()
+stub.tasks = modal.Dict.new()
+stub.queues = modal.Dict.new()
+stub.logs_queue = modal.Queue.new()
+stub.signal = modal.Dict.new()
 
 image = (
     modal.Image.debian_slim(python_version="3.11.7")
@@ -28,15 +29,14 @@ image = (
     .copy_local_file("./pyproject.toml")
     .copy_local_file("./README.md")
     .run_commands("pip install .")
+    .env({"WEB_CONCURRENCY": "8"})
 )
 with image.imports():
-    import polars as pl
-    from sse_starlette.sse import EventSourceResponse
+    from websockets.exceptions import ConnectionClosed
 
-    from tracecat.agents import get_path_to_user_logs
     from tracecat.attack.stratus import ddos
-    from tracecat.config import path_to_pkg
-    from tracecat.logger import standard_logger, tail_file
+    from tracecat.catalog.lib import data
+    from tracecat.logger import standard_logger
 
     logger = standard_logger(__name__)
 
@@ -55,24 +55,11 @@ else:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-ENABLED_OPTIONAL_FEATURES = {}
-
-
-def safe_json_load(path: Path) -> dict:
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.touch(exist_ok=True)
-        return {}
-    elif path.stat().st_size == 0:
-        return {}
-    with path.open("r") as f:
-        return json.load(f)
 
 
 @app.get("/")
@@ -80,94 +67,94 @@ def root():
     return {"status": "ok"}
 
 
-# Core API
+class WsData(BaseModel):
+    uuid: str
+    technique_ids: list[str]
+    timeout: int | None = None
+    max_tasks: int | None = None
+    max_actions: int | None = None
 
 
-@app.post("/ddos")
-async def create_ddos_lab(
-    uuid: str,
-    background_tasks: BackgroundTasks,
-    technique_ids: list[str],
-    # Temporary default to speedup development
-    timeout: int | None = None,
-    max_tasks: int | None = None,
-    max_actions: int | None = None,
-):
-    BG_TASKS[uuid] = asyncio.create_task(
-        ddos(
-            uuid=uuid,
-            technique_ids=technique_ids,
-            timeout=timeout,
-            max_tasks=max_tasks,
-            max_actions=max_actions,
-        )
-    )
-    return {"message": f"Created lab {uuid}"}
-
-
-# Live stream
-
-
-async def tail_file_handler(uuid: str, queue: asyncio.Queue):
-    file_path = get_path_to_user_logs(uuid=uuid)
+@app.websocket("/feed/logs/ws")
+async def stream_lab_logs(websocket: WebSocket):
+    await websocket.accept()
+    logger.info("Accepted websocket connection")
     try:
-        async for line in tail_file(file_path=file_path):
-            line = line.strip()
-            await queue.put(line)
-    except asyncio.CancelledError:
-        logger.info(f"Cancelled tail file handler for {uuid}")
-        return
-
-
-@app.get("/feed/logs/{uuid}")
-async def stream_agent_logs(uuid: str):
-    queue = TRACECAT__LOG_QUEUES.get("uuid", asyncio.Queue())
-    asyncio.create_task(tail_file_handler(uuid=uuid, queue=queue))
-    logger.info(f"Started log stream for {uuid}")
-
-    async def log_stream():
         while True:
-            item = await queue.get()
-            yield item
+            logger.info("Waiting for lab data")
+            raw_data = await websocket.receive_json()
+            data = WsData.model_validate(raw_data)
 
-    return EventSourceResponse(log_stream())
+            logger.info(f"Started log stream for {data.uuid}")
+            _queue = asyncio.Queue()
+            stub.signal[data.uuid] = "running"
+
+            ddos_task = asyncio.create_task(
+                ddos(
+                    uuid=data.uuid,
+                    technique_ids=data.technique_ids,
+                    timeout=data.timeout,
+                    max_tasks=data.max_tasks,
+                    max_actions=data.max_actions,
+                    enqueue=_queue.put_nowait,
+                )
+            )
+            try:
+                while True:
+                    logger.info(f"{data.uuid}: In queue")
+                    signal = stub.signal.get(data.uuid)
+                    if signal == "cancel":
+                        logger.info(f"{data.uuid}: Cancel lab")
+                        break
+                    item = await _queue.get()
+                    logger.info(f"{data.uuid}: Dequeued item: {item}")
+                    await websocket.send_json(item)  #
+            except (WebSocketException, WebSocketDisconnect) as e:
+                logger.info(f"Websocket error: {e}")
+            except ConnectionClosed as e:
+                logger.info(f"Connection closed: {e.reason}")
+            except Exception as e:
+                logger.info(f"An Exception occurred: {e}")
+            finally:
+                ddos_task.cancel()
+                logger.info(f"Cancelled log stream for {data.uuid}")
+                stub.signal.pop(data.uuid)
+    except (WebSocketException, WebSocketDisconnect) as e:
+        logger.info(f"Websocket error: {e}")
+    except ConnectionClosed as e:
+        logger.info(f"Connection closed: {e.reason}")
+    except Exception as e:
+        logger.info(f"An Exception occurred: {e}")
+    finally:
+        logger.info("Closing websocket connection")
+        await websocket.close()
 
 
 @app.get("/feed/logs/{uuid}/cancel")
 async def cancel_stream_agent_logs(uuid: str):
-    task = BG_TASKS.get(uuid)
-    if not task:
-        return {"message": f"Job {uuid} not found"}
-
-    try:
-        task.cancel()
-        await task
-    except (asyncio.CancelledError, ssl.SSLError):
-        logger.info(f"Task {uuid} has been cancelled")
-    except Exception as e:
-        logger.error(f"An Exception occurred: {e}")
-        raise e
-    except BaseException as e:
-        logger.error(f"A BaseException occurred: {e}")
-    finally:
-        del BG_TASKS[uuid]
-        logger.info(f"Cancelled log stream for {uuid}")
-    return {"message": f"Stopped lab {uuid}"}
+    stub.signal[uuid] = "cancel"
+    return {"message": f"Stopping lab {uuid}"}
 
 
 @app.get("/primitives-catalog")
 def get_primitives_catalog():
-    path = path_to_pkg() / "tracecat" / "catalog" / "primitives.parquet"
-    df = pl.read_parquet(path)
-    return {"primitives": df.to_dicts()}
+    return {"primitives": data}
 
 
-@stub.function(
+@stub.cls(
     image=image,
     secrets=[modal.Secret.from_name("tracecat-openai-secret")],
-    concurrency_limit=1,
-    allow_concurrent_inputs=10,
+    cpu=8,
 )
-@modal.asgi_app()
-def fastapi_app():
-    return app
+class App:
+    @modal.enter()
+    def run_this_on_container_startup(self):
+        logger.info("🚀 Starting Tracecat Simulation API server")
+
+    @modal.exit()
+    def run_this_on_container_shutdown(self, *args, **kwargs):
+        logger.info("🛑 Stopping Tracecat Simulation API server")
+
+    @modal.asgi_app()
+    def fastapi_app(self):
+        return app

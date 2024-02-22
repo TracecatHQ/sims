@@ -5,6 +5,7 @@ This is a pentesting tool that assumes full visibility into your AWS inventory.
 
 import asyncio
 import ssl
+from typing import Callable
 
 from tracecat.agents import AWSUser
 from tracecat.attack.attacker import MaliciousStratusUser
@@ -85,6 +86,7 @@ async def simulate_stratus(
     max_tasks: int,
     max_actions: int,
     timeout: int,
+    enqueue: Callable | None = None,
 ):
     user = NoisyStratusUser(
         uuid=uuid,
@@ -93,6 +95,7 @@ async def simulate_stratus(
         scenario_id=scenario_id,
         max_tasks=max_tasks,
         max_actions=max_actions,
+        enqueue=enqueue,
     )
     denotator = MaliciousStratusUser(
         uuid=uuid,
@@ -100,8 +103,9 @@ async def simulate_stratus(
         technique_id=technique_id,
         scenario_id=scenario_id,
         # Assume very carefully executed attack
-        max_tasks=scenario_id,
-        max_actions=max_actions,
+        max_tasks=1,
+        max_actions=5,
+        enqueue=enqueue,
     )
 
     tasks: list[AWSUser] = [user, denotator]
@@ -125,6 +129,7 @@ async def ddos(
     timeout: int | None = None,
     max_tasks: int | None = None,
     max_actions: int | None = None,
+    enqueue: Callable | None = None,
 ):
     user_name = "tracecat-user"
     timeout = timeout or 300
@@ -147,6 +152,7 @@ async def ddos(
                     max_tasks=max_tasks,
                     max_actions=max_actions,
                     timeout=timeout,
+                    enqueue=enqueue,
                 )
             except asyncio.TimeoutError:
                 logger.info(technique_desc, "✅ Timed out successfully")
