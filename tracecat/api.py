@@ -15,9 +15,6 @@ app = FastAPI(debug=True, default_response_class=ORJSONResponse)
 
 
 stub = modal.Stub()
-stub.tasks = modal.Dict.new()
-stub.queues = modal.Dict.new()
-stub.logs_queue = modal.Queue.new()
 stub.signal = modal.Dict.new()
 
 image = (
