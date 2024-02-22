@@ -70,6 +70,7 @@ def root():
 class WsData(BaseModel):
     uuid: str
     technique_ids: list[str]
+    scenario_id: str
     timeout: int | None = None
     max_tasks: int | None = None
     max_actions: int | None = None
@@ -85,7 +86,7 @@ async def stream_lab_logs(websocket: WebSocket):
             raw_data = await websocket.receive_json()
             data = WsData.model_validate(raw_data)
 
-            logger.info(f"Started log stream for {data.uuid}")
+            logger.info(f"Started log stream for {data.uuid}. Data: {data!r}")
             _queue = asyncio.Queue()
             stub.signal[data.uuid] = "running"
 
@@ -93,6 +94,7 @@ async def stream_lab_logs(websocket: WebSocket):
                 ddos(
                     uuid=data.uuid,
                     technique_ids=data.technique_ids,
+                    scenario_id=data.scenario_id,
                     timeout=data.timeout,
                     max_tasks=data.max_tasks,
                     max_actions=data.max_actions,
