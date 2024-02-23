@@ -32,7 +32,6 @@ with image.imports():
     from websockets.exceptions import ConnectionClosed
 
     from tracecat.attack.stratus import ddos
-    from tracecat.catalog.lib import data
     from tracecat.logger import standard_logger
 
     logger = standard_logger(__name__)
@@ -46,13 +45,12 @@ if os.environ.get("TRACECAT__DEV"):
     ]
 else:
     origins = [
-        "https://tracecat-simulation-demo-ici1kqv61-daryls-projects.vercel.app",
         "https://simulation.tracecat.com",
     ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -135,15 +133,11 @@ async def cancel_stream_agent_logs(uuid: str):
     return {"message": f"Stopping lab {uuid}"}
 
 
-@app.get("/primitives-catalog")
-def get_primitives_catalog():
-    return {"primitives": data}
-
-
 @stub.cls(
     image=image,
     secrets=[modal.Secret.from_name("tracecat-openai-secret")],
     cpu=8,
+    keep_warm=1,
 )
 class App:
     @modal.enter()
