@@ -431,7 +431,6 @@ class AWSUser(User):
             api_call_prompt,
             system_context=system_context,
             response_format="json_object",
-            model="gpt-3.5-turbo-1106",
         )
         self.logger.info("🎲 Selected action:\n%s", json.dumps(aws_action, indent=2))
         if "AWSAPIServiceMethod" in aws_action.keys():
