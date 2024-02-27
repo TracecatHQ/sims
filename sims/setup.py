@@ -1,15 +1,14 @@
+import os
 from ipaddress import ip_address
 from pathlib import Path
-import os
 
 import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives.serialization import load_ssh_public_key
 
-from tracecat.config import TRACECAT__LAB_DIR
-from tracecat.logger import standard_logger
+from sims.config import TRACECAT__LAB_DIR
+from sims.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 
@@ -17,7 +16,7 @@ logger = standard_logger(__name__, level="INFO")
 def create_ip_whitelist(dir_path: Path | None = None):
     """Write own IP address into whitelist.
 
-    The whitelist is stored in ~/.tracecat.
+    The whitelist is stored in ~/.sims.
     """
     logger.info("🚧 Add own IP to whitelist")
     dir_path = dir_path or TRACECAT__LAB_DIR
@@ -34,7 +33,7 @@ def create_compromised_ssh_keys(dir_path: Path | None = None):
 
     WARNING: These keys grant access to compromised EC2 instances
     that are deployed for the labs. The compromised SSH keys are
-    stored in ~/.tracecat.
+    stored in ~/.sims.
     """
     dir_path = dir_path or TRACECAT__LAB_DIR
 

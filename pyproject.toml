@@ -5,7 +5,7 @@ requires = [
 ]
 
 [project]
-name = "tracecat"
+name = "sims"
 description = "Turn Terraform scripts into automated adversary emulation for the Cloud."
 readme = "README.md"
 authors = [
@@ -46,7 +46,7 @@ test = [
 ]
 
 [tool.hatch.version]
-path = "tracecat/__init__.py"
+path = "sims/__init__.py"
 
 [tool.ruff]
 exclude = ["tests/scenarios/*.py"]

@@ -40,11 +40,11 @@ from uuid import uuid4
 
 from pydantic import BaseModel
 
-from tracecat.config import TRACECAT__LAB_DIR, path_to_pkg
-from tracecat.infrastructure import show_terraform_state
-from tracecat.llm import async_openai_call
-from tracecat.logger import JsonFormatter, ThoughtLog, composite_logger, standard_logger
-from tracecat.scenarios import SCENARIOS_MAPPING
+from sims.config import TRACECAT__LAB_DIR, path_to_pkg
+from sims.infrastructure import show_terraform_state
+from sims.llm import async_openai_call
+from sims.logger import JsonFormatter, ThoughtLog, composite_logger, standard_logger
+from sims.scenarios import SCENARIOS_MAPPING
 
 TRACECAT__LAB_DIR.mkdir(parents=True, exist_ok=True)
 AWS_CLOUDTRAIL__EVENT_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -308,7 +308,7 @@ class User(ABC):
 
 
 def load_aws_cloudtrail_docs() -> list[dict]:
-    path = path_to_pkg() / "tracecat/log_references/aws_cloudtrail.html"
+    path = path_to_pkg() / "sims/log_references/aws_cloudtrail.html"
     with open(path, "r") as f:
         return f.read()
 

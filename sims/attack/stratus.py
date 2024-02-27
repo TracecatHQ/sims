@@ -7,10 +7,10 @@ import asyncio
 import ssl
 from typing import Callable
 
-from tracecat.agents import AWSUser
-from tracecat.attack.attacker import MaliciousStratusUser
-from tracecat.attack.noise import NoisyStratusUser
-from tracecat.logger import standard_logger
+from sims.agents import AWSUser
+from sims.attack.attacker import MaliciousStratusUser
+from sims.attack.noise import NoisyStratusUser
+from sims.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 

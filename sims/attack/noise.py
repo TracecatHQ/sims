@@ -3,7 +3,7 @@ from typing import Callable
 
 import httpx
 
-from tracecat.agents import (
+from sims.agents import (
     AWSAPICallAction,
     AWSUser,
     Background,
@@ -11,12 +11,12 @@ from tracecat.agents import (
     Task,
     model_as_text,
 )
-from tracecat.config import STRATUS__HOME_DIR
-from tracecat.llm import async_openai_call
+from sims.config import STRATUS__HOME_DIR
+from sims.llm import async_openai_call
 
 
-class MaliciousStratusUser(AWSUser):
-    """The hacker."""
+class NoisyStratusUser(AWSUser):
+    """The expert false positives generator."""
 
     def __init__(
         self,
@@ -35,42 +35,39 @@ class MaliciousStratusUser(AWSUser):
             name=name,
             scenario_id=scenario_id,
             terraform_path=terraform_path,
-            is_compromised=True,
+            is_compromised=False,
             max_tasks=max_tasks,
             max_actions=max_actions,
             enqueue=enqueue,
         )
 
-    async def _get_background(self) -> dict:
+    async def _get_background(self) -> str:
         technique_id = self.technique_id
         permissions = self._get_iam()
         url = f"https://raw.githubusercontent.com/DataDog/stratus-red-team/main/docs/attack-techniques/AWS/{technique_id}.md"
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             attack_description = response.text
-        system_context = (
-            "You are an expert Cloud cybersecurity professional."
-            "You are an expert red teamer."
-            "You always mention at least one specific AWS API call in every write-up."
+        system_context = textwrap.dedent(
+            "You are an expert in reverse engineering Cloud cyber attacks."
+            "You are an expert in Cloud activities that produce false positives in a SIEM."
+            "You are an expert in spoofing in the Cloud."
         )
         prompt = textwrap.dedent(
-            f"""Task: Create an attacker motive that aligns with this attack description:
+            f"""
+            Task: Generate a background for a non-malicious AWS user given the attack description:
             ```{attack_description}```
 
-            Also give the attacker a non-malicious sounding username that aligns with the following IAM permissions:
+            Also give the AWS user a username that aligns with the following IAM permissions:
             ```{permissions}```
 
-            Hints:
-            - The motive can be financial (extortion, ransomops, crytohacking, etc.), state-sponsored, or hacktist.
-            - Refer to specific advanced persistent threat (APT) actors (e.g. APT1) that align with the tactics, techniques, and procecures (TTPs) in the attack description.
-
-            Must Haves:
-            - Use the same tools and techniques as described in the attack but in a non-malicious way.
+            Intent: Use the same tools and techniques as described in the attack but in a non-malicious way.
 
             Return a JSON dictionary according to the following pydantic schema:
             {model_as_text(Background)}
             """
         )
+
         self.logger.info("🧠 Before calling openai for %s...", self.name)
         background = await async_openai_call(
             prompt,
@@ -78,15 +75,17 @@ class MaliciousStratusUser(AWSUser):
             system_context=system_context,
             response_format="json_object",
         )
+
         self.logger.info("🧠 After calling openai for %s...", self.name)
         return background
 
     async def _get_objective(self) -> dict:
         permissions = self._get_iam()
-        system_context = (
-            "You are an expert in predicting what a motivated cyber threat actor might do."
+        system_context = textwrap.dedent(
+            "You are an expert in predicting what users in an organization might do."
             "You are also an expert at breaking down objectives into smaller tasks."
             "You are creative and like to think outside the box."
+            "You always mention at least one specific AWS API call in every write-up."
         )
         prompt = textwrap.dedent(
             f"""
@@ -98,9 +97,9 @@ class MaliciousStratusUser(AWSUser):
 
             {model_as_text(AWSAPICallAction)}
             ```
-            Return a a single structured JSON response.
+            Return a single structured JSON response.
 
-            Intent: Predict what a malicious user with the following backgroun and IAM permissions might realistically do:
+            Intent: Predict what a user with the following background and IAM permissions might realistically do:
             ```
             Background:
             {self.background}
@@ -111,11 +110,10 @@ class MaliciousStratusUser(AWSUser):
             The user has completed the following objectives:
             {self.objectives!s}
             ```
-
-            You must select one AWS API call explicitly mentioned in the "Background".
-            Each objective should have no more than {self.max_tasks} tasks.
-            Each task should have no more than {self.max_actions} actions.
-            Please be realistic and detailed.
+            - Include at least one AWS API call explicitly mentioned in the "Background".
+            - Each objective should have no more than {self.max_tasks} tasks.
+            - Each task should have no more than {self.max_actions} actions.
+            - Give realistic and detailed answers.
             """
         )
 

@@ -2,8 +2,8 @@ import os
 import subprocess
 from pathlib import Path
 
-from tracecat.config import path_to_pkg
-from tracecat.logger import standard_logger
+from sims.config import path_to_pkg
+from sims.logger import standard_logger
 
 logger = standard_logger(__name__, level="INFO")
 

@@ -22,7 +22,7 @@ image = (
     .pip_install_from_pyproject(
         "./pyproject.toml",
     )
-    .copy_local_dir("./tracecat", "/tracecat")
+    .copy_local_dir("./sims", "/sims")
     .copy_local_file("./pyproject.toml")
     .copy_local_file("./README.md")
     .run_commands("pip install .")
@@ -31,8 +31,8 @@ image = (
 with image.imports():
     from websockets.exceptions import ConnectionClosed
 
-    from tracecat.attack.stratus import ddos
-    from tracecat.logger import standard_logger
+    from sims.attack.stratus import ddos
+    from sims.logger import standard_logger
 
     logger = standard_logger(__name__)
 
@@ -45,7 +45,7 @@ if os.environ.get("TRACECAT__DEV"):
     ]
 else:
     origins = [
-        "https://simulation.tracecat.com",
+        "https://simulation.sims.com",
     ]
 
 app.add_middleware(

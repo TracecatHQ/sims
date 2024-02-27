@@ -7,7 +7,7 @@ from openai import AsyncOpenAI, OpenAI
 from openai.types.chat.chat_completion import Choice
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from tracecat.logger import standard_logger
+from sims.logger import standard_logger
 
 logger = standard_logger(__name__)
 

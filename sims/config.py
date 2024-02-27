@@ -9,12 +9,12 @@ STRATUS__HOME_DIR = (
     .resolve()
 )
 TRACECAT__HOME_DIR = (
-    Path(os.environ.get("TRACECAT__HOME_DIR", "~/.tracecat")).expanduser().resolve()
+    Path(os.environ.get("TRACECAT__HOME_DIR", "~/.sims")).expanduser().resolve()
 )
 TRACECAT__LAB_DIR = TRACECAT__HOME_DIR / "lab"
 
 
 def path_to_pkg() -> Path:
-    import tracecat
+    import sims
 
-    return resources.files(tracecat).parent
+    return resources.files(sims).parent
