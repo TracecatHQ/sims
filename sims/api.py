@@ -19,14 +19,17 @@ stub.signal = modal.Dict.new()
 
 image = (
     modal.Image.debian_slim(python_version="3.11.7")
-    .pip_install_from_pyproject(
-        "./pyproject.toml",
-    )
+    .pip_install_from_pyproject("./pyproject.toml")
     .copy_local_dir("./sims", "/sims")
     .copy_local_file("./pyproject.toml")
     .copy_local_file("./README.md")
     .run_commands("pip install .")
-    .env({"WEB_CONCURRENCY": "8"})
+    .env(
+        {
+            "WEB_CONCURRENCY": "8",
+            "TRACECAT__ENV": os.environ.get("TRACECAT__ENV", "DEV"),
+        }
+    )
 )
 with image.imports():
     from websockets.exceptions import ConnectionClosed
@@ -36,17 +39,16 @@ with image.imports():
 
     logger = standard_logger(__name__)
 
-if os.environ.get("TRACECAT__DEV"):
+if os.environ.get("TRACECAT__ENV") == "DEV":
+    print("Running in development mode")
     origins = [
         "http://localhost",
         "http://localhost:8080",
         "http://localhost:3000",
-        "http://localhost:3001",
     ]
 else:
-    origins = [
-        "https://simulation.sims.com",
-    ]
+    print("Running in production mode")
+    origins = ["https://simulation.tracecat.com"]
 
 app.add_middleware(
     CORSMiddleware,
