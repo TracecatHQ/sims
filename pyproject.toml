@@ -25,6 +25,7 @@ dynamic = [
 dependencies = [
   "cryptography",
   "fastapi",
+  "modal",
   "openai",
   "orjson",
   "pydantic==2.6.1",
