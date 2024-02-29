@@ -181,15 +181,12 @@ class User(ABC):
         # For thoughts
         logs_file_path = get_path_to_user_logs(uuid=self.uuid)
 
-        self._use_enqueue = enqueue is not None
-        if self._use_enqueue:
-            self.enqueue = enqueue
-        else:
-            self.thoughts_logger = composite_logger(
-                f"{self.uuid}__{self.name}__thoughts__{self._user_uuid}",
-                file_path=logs_file_path,
-                log_format="json",
-            )
+        self.enqueue = enqueue
+        self.thoughts_logger = composite_logger(
+            f"{self.uuid}__{self.name}__thoughts__{self._user_uuid}",
+            file_path=logs_file_path,
+            log_format="json",
+        )
 
     @property
     def terraform_state(self) -> str | None:
@@ -213,12 +210,11 @@ class User(ABC):
         pass
 
     def log_thought(self, thought_log: ThoughtLog):
-        if self._use_enqueue:
-            log = thought_log.model_dump()
-            log["time"] = datetime.now().strftime(JsonFormatter._date_format)
-            self.enqueue(log)
-        else:
-            self.thoughts_logger.info(thought_log)
+        log = thought_log.model_dump()
+        log["time"] = datetime.now().strftime(JsonFormatter._date_format)
+        self.enqueue(log)
+
+        self.thoughts_logger.info(thought_log)
 
     async def get_background(self) -> str:
         self.logger.info("🔍 Getting user background...")
