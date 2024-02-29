@@ -34,9 +34,14 @@ image = (
         {
             "WEB_CONCURRENCY": "8",
             "TRACECAT__ENV": os.environ.get("TRACECAT__ENV", "dev"),
-            "TRACECAT__MODAL_OPENAI_SECRET_NAME": os.environ[
-                "TRACECAT__MODAL_OPENAI_SECRET_NAME"
-            ],
+            "TRACECAT__MODAL_OPENAI_SECRET_NAME": os.environ.get(
+                "TRACECAT__MODAL_OPENAI_SECRET_NAME",
+                "tracecat-openai-secret",
+            ),
+            "TRACECAT__FRONTEND_URL": os.environ.get(
+                "TRACECAT__FRONTEND_URL",
+                "https://simulation.tracecat.com",
+            ),
         }
     )
 )
@@ -57,8 +62,7 @@ if os.environ.get("TRACECAT__ENV") == "dev":
         "http://localhost:3000",
     ]
 else:
-    print("Running in production mode")
-    origins = ["https://simulation.tracecat.com"]
+    origins = [os.environ["TRACECAT__FRONTEND_URL"]]
 
 app.add_middleware(
     CORSMiddleware,
