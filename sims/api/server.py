@@ -12,7 +12,7 @@ from websockets.exceptions import ConnectionClosed
 from sims.api.models import WebsocketData
 from sims.logger import standard_logger
 
-load_dotenv(find_dotenv(".env.local", raise_error_if_not_found=True))
+load_dotenv(find_dotenv(".env.local"))
 
 from sims.attack.stratus import ddos  # noqa: E402
 

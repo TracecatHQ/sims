@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 
 # Load the environment variables in local entrypoint to inject into the modal image
-load_dotenv(find_dotenv(".env.modal", raise_error_if_not_found=True))
+load_dotenv(find_dotenv(".env.modal"))
 
 
 app = FastAPI(
