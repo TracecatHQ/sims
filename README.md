@@ -14,6 +14,19 @@ Please set the env variables in `.env.local` before running commands.
 cp .env.local.example .env.local
 ```
 
+```bash
+# .env.local
+
+# Use 'dev' for local development
+TRACECAT__ENV=dev
+
+# OpenAI API key
+OPENAI_API_KEY=...
+
+# Optional: OpenAI organization ID
+OPENAI_ORG_ID=...
+```
+
 Deploy the FastAPI app using `uvicorn`. You may wish to specify the number of workers with the `--workers` flag.
 
 ```bash
@@ -30,6 +43,21 @@ Please set the env variables in `.env.modal` before running commands.
 cp .env.modal.example .env.modal
 ```
 
+```bash
+# .env.modal
+
+# 'dev' or 'prod'.
+# Use 'dev' when serving the Modal endpoint from the CLI.
+# Use 'prod' when deploying to Modal.
+TRACECAT__ENV=prod
+
+# The name of the secret you created in the Modal dashboard
+TRACECAT__MODAL_OPENAI_SECRET_NAME=...
+
+# The URL of the client
+TRACECAT__FRONTEND_URL=...
+```
+
 You will also have to setup a Modal account and the CLI tool to proceed. Please follow the instructions [here](https://modal.com/docs/guide).
 
 Serving the Modal endpoint with hot reload (for development):
@@ -41,7 +69,7 @@ modal serve sims/api/modal_server.py
 For full deployment:
 
 ```bash
-modal deploy --name tracecat-simulation-api sims/api/modal_server.py
+modal deploy --name <deployment name> sims/api/modal_server.py
 ```
 
 ## Frontend
@@ -50,7 +78,7 @@ modal deploy --name tracecat-simulation-api sims/api/modal_server.py
 
 Follow the `pnpm` installation instructions [here](https://pnpm.io/installation).
 
-Configure your `frontend/.env.local` file to point to the API endpoint URL.
+Configure your `frontend/.env.local` file to point to the API endpoint URL using `NEXT_PUBLIC_API_URL`.
 
 Then run the development server with pnpm:
 
