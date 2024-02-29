@@ -80,6 +80,13 @@ Follow the `pnpm` installation instructions [here](https://pnpm.io/installation)
 
 Configure your `frontend/.env.local` file to point to the API endpoint URL using `NEXT_PUBLIC_API_URL`.
 
+```bash
+# frontend/.env.local
+
+# Your API endpoint URL
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
 Then run the development server with pnpm:
 
 ```bash
