@@ -50,11 +50,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
         suppressHydrationWarning
       >
         <head>
-          <script
-            async
-            src="https://tag.clearbitscripts.com/v1/pk_d32d00243aee0773786e72d768420610/tags.js"
-            referrerPolicy="strict-origin-when-cross-origin"
-          ></script>
+          {process.env.ENABLE_ANALYTICS === "true" && (
+            <script
+              async
+              src="https://tag.clearbitscripts.com/v1/pk_d32d00243aee0773786e72d768420610/tags.js"
+              referrerPolicy="strict-origin-when-cross-origin"
+            ></script>
+          )}
         </head>
         <body
           className={cn(
