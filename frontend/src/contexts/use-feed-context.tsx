@@ -20,7 +20,7 @@ const FeedProvider = (props: { children: React.ReactNode }) => {
   const [isRunning, setIsRunning] = useState(false)
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const { sendJsonMessage, lastJsonMessage, getWebSocket } = useWebSocket(
-    `${process.env.NEXT_PUBLIC_API_URL?.replace("https", "wss")}/feed/logs/ws`,
+    `${process.env.NEXT_PUBLIC_API_URL?.replace("http", "ws")}/labs/ws`,
     {
       onOpen: () => console.log("Connection opened"),
       onClose: () => console.log("Connection closed"),

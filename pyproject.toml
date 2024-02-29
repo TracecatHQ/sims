@@ -29,6 +29,7 @@ dependencies = [
   "openai",
   "orjson",
   "pydantic==2.6.1",
+  "python-dotenv",
   "python-multipart",
   "tenacity",
   "uvicorn",

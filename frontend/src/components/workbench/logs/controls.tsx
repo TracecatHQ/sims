@@ -116,9 +116,9 @@ function LogsControls({ className, scenario }: LogsControlsProps) {
       console.log("Subscribing to feed")
       toggleEdgeAnimation(true)
     } else {
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/feed/logs/${jobUuid}/cancel`
-      ).then((response) => {
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/labs/${jobUuid}`, {
+        method: "DELETE",
+      }).then((response) => {
         if (!response.ok) {
           toast({
             title: "Failed to cancel lab",

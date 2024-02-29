@@ -4,14 +4,20 @@ import asyncio
 import os
 
 import modal
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
-from pydantic import BaseModel
 
-TRACECAT__LOG_QUEUES: dict[str, asyncio.Queue] = {}
+# Load the environment variables in local entrypoint to inject into the modal image
+load_dotenv(find_dotenv(".env.modal", raise_error_if_not_found=True))
 
-app = FastAPI(debug=True, default_response_class=ORJSONResponse)
+
+app = FastAPI(
+    debug=os.environ.get("TRACECAT__ENV", "dev") == "dev",
+    title="Tracecat Simulation API",
+    default_response_class=ORJSONResponse,
+)
 
 
 stub = modal.Stub()
@@ -27,19 +33,23 @@ image = (
     .env(
         {
             "WEB_CONCURRENCY": "8",
-            "TRACECAT__ENV": os.environ.get("TRACECAT__ENV", "DEV"),
+            "TRACECAT__ENV": os.environ.get("TRACECAT__ENV", "dev"),
+            "TRACECAT__MODAL_OPENAI_SECRET_NAME": os.environ[
+                "TRACECAT__MODAL_OPENAI_SECRET_NAME"
+            ],
         }
     )
 )
 with image.imports():
     from websockets.exceptions import ConnectionClosed
 
+    from sims.api.models import WebsocketData
     from sims.attack.stratus import ddos
     from sims.logger import standard_logger
 
     logger = standard_logger(__name__)
 
-if os.environ.get("TRACECAT__ENV") == "DEV":
+if os.environ.get("TRACECAT__ENV") == "dev":
     print("Running in development mode")
     origins = [
         "http://localhost",
@@ -64,16 +74,7 @@ def root():
     return {"status": "ok"}
 
 
-class WsData(BaseModel):
-    uuid: str
-    technique_ids: list[str]
-    scenario_id: str
-    timeout: int | None = None
-    max_tasks: int | None = None
-    max_actions: int | None = None
-
-
-@app.websocket("/feed/logs/ws")
+@app.websocket("/labs/ws")
 async def stream_lab_logs(websocket: WebSocket):
     await websocket.accept()
     logger.info("Accepted websocket connection")
@@ -81,7 +82,7 @@ async def stream_lab_logs(websocket: WebSocket):
         while True:
             logger.info("Waiting for lab data")
             raw_data = await websocket.receive_json()
-            data = WsData.model_validate(raw_data)
+            data = WebsocketData.model_validate(raw_data)
 
             logger.info(f"Started log stream for {data.uuid}. Data: {data!r}")
             _queue = asyncio.Queue()
@@ -109,27 +110,27 @@ async def stream_lab_logs(websocket: WebSocket):
                     logger.info(f"{data.uuid}: Dequeued item: {item}")
                     await websocket.send_json(item)  #
             except (WebSocketException, WebSocketDisconnect) as e:
-                logger.info(f"Websocket error: {e}")
+                logger.info(f"{e.__class__.__qualname__} occurred inside")
+                raise e
             except ConnectionClosed as e:
-                logger.info(f"Connection closed: {e.reason}")
+                logger.info(f"Connection closed inside: {e.reason}")
+                raise e
             except Exception as e:
-                logger.info(f"An Exception occurred: {e}")
+                logger.info(f"An Exception occurred inside: {e}")
+                raise e
             finally:
                 ddos_task.cancel()
                 logger.info(f"Cancelled log stream for {data.uuid}")
                 stub.signal.pop(data.uuid)
-    except (WebSocketException, WebSocketDisconnect) as e:
-        logger.info(f"Websocket error: {e}")
+    except (WebSocketException, WebSocketDisconnect):
+        logger.info("Websocket error")
     except ConnectionClosed as e:
         logger.info(f"Connection closed: {e.reason}")
     except Exception as e:
         logger.info(f"An Exception occurred: {e}")
-    finally:
-        logger.info("Closing websocket connection")
-        await websocket.close()
 
 
-@app.get("/feed/logs/{uuid}/cancel")
+@app.delete("/labs/{uuid}")
 async def cancel_stream_agent_logs(uuid: str):
     stub.signal[uuid] = "cancel"
     return {"message": f"Stopping lab {uuid}"}
@@ -137,18 +138,18 @@ async def cancel_stream_agent_logs(uuid: str):
 
 @stub.cls(
     image=image,
-    secrets=[modal.Secret.from_name("tracecat-openai-secret")],
+    secrets=[modal.Secret.from_name(os.environ["TRACECAT__MODAL_OPENAI_SECRET_NAME"])],
     cpu=8,
     keep_warm=1,
 )
 class App:
     @modal.enter()
     def run_this_on_container_startup(self):
-        logger.info("🚀 Starting Tracecat Simulation API server")
+        logger.info("🚀 Starting Modal API server")
 
     @modal.exit()
     def run_this_on_container_shutdown(self, *args, **kwargs):
-        logger.info("🛑 Stopping Tracecat Simulation API server")
+        logger.info("🛑 Stopping Modal API server")
 
     @modal.asgi_app()
     def fastapi_app(self):
