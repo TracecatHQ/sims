@@ -12,7 +12,7 @@ If you are interested in using or extending this project, please join our Discor
 
 ## Motivation
 
-We developed AI Agents from [scratch]() to simulate both malicious and benign behavior in the Cloud.
+We developed AI Agents from [scratch](sims/agents.py) to simulate both malicious and benign behavior in the Cloud.
 This library relies on [Stratus Red Team](https://github.com/DataDog/stratus-red-team), an open-source advesary emulation library from DataDog, to define individual attack techniques.
 
 Existing advesary emulation labs generate examples of true positive alerts. These are great for writing detections for known malicious behavior, but these labs don't provide examples of false positives: i.e. why a non-malicious user (e.g. software engineer) might use one of the procedures in the attack in their day-to-day job.
@@ -23,7 +23,7 @@ The benefit from this AI agents approach, however, is the ability to generate st
 
 ## LLM Workflow
 
-We have two independent AI agents, `MaliciousStratusUser` and `NoisyStratusUser`, that run async.
+We have two independent AI agents, [`MaliciousStratusUser`](sims/attack/attacker.py) and [`NoisyStratusUser`](sims/attack/noise.py), that run async.
 These agents are used to generate true positive and false positive behavior associated with a specific attack technique.
 
 Note: Agent "thoughts" and synthetic Cloud logs are saved as `ndjson` in `~/.sims/lab/thoughts`.
