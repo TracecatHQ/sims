@@ -1,12 +1,15 @@
 # ☁️🤖 Sims
 
+![Next.js](https://img.shields.io/badge/next.js-%23000000.svg?style=for-the-badge&logo=next.js&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
+[![Discord](https://img.shields.io/discord/1212548097624903681.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/WbEXhn6Sfx))\
+
 Run LLM agent-based simulations to generate benign and malicious Cloud logs.
 Simulate multi-chain attacks using a click-and-drag attack builder.
-
 Try it live here: https://simulation.tracecat.com/workbench
 
-Only AWS attack techniques are currently implemented. But `sims` can be extended to include other Cloud platforms.
-If you are interested in using or extending this project, please join our Discord for Q&A and updates!
+We've only implemented AWS attack techniques. But `sims` can be easily extended to include other Cloud platforms.
+If you are interested in using or improving this project, please [join our Discord](https://discord.gg/WbEXhn6Sfx) for Q&A and updates!
 
 ![Screenshot](media/screenshot.png)
 
