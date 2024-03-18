@@ -10,7 +10,7 @@ Simulate multi-chain attacks using a click-and-drag attack builder.
 Try it live here: https://simulation.tracecat.com/workbench
 
 We've only implemented AWS attack techniques. But `sims` can be easily extended to include other Cloud platforms.
-If you are interested in using or improving this project, please [join our Discord](https://discord.gg/WbEXhn6Sfx) for Q&A and updates!
+If you are interested in using or improving this project, please [join our Discord](https://discord.gg/n3GF4qxFU8) for Q&A and updates!
 
 ![Screenshot](media/screenshot.png)
 
